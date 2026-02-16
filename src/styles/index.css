@@ -2691,7 +2691,7 @@ body {
   position: fixed;
   top: 0;
   right: 0;
-  width: 280px;
+  width: 220px;
   height: 100vh;
   background: var(--card-bg, #fff);
   border-left: 1px solid var(--border, #e2e8f0);

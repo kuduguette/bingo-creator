@@ -101,9 +101,12 @@ function App() {
     });
   }, [onRoomSettings]);
 
-  // Auto-transition to room view
+  // Auto-transition to room view + update URL
   useEffect(() => {
-    if (roomCode && view === 'lobby') setView('room');
+    if (roomCode && view === 'lobby') {
+      setView('room');
+      window.history.replaceState({}, '', `${window.location.pathname}?room=${roomCode}`);
+    }
   }, [roomCode, view]);
 
   // Theme
