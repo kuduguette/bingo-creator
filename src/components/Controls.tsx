@@ -36,20 +36,15 @@ interface ControlsProps {
     setSize: (size: number) => void;
     gameMode: string;
     setGameMode: (mode: string) => void;
-    editMode: boolean;
-    setEditMode: (mode: boolean) => void;
     titleFont: string;
     setTitleFont: (font: string) => void;
     bodyFont: string;
     setBodyFont: (font: string) => void;
-    onReset: () => void;
-    onClear: () => void;
     onShuffle: () => void;
+    onClear: () => void;
     allCaps: boolean;
     setAllCaps: (caps: boolean) => void;
     onPrint: () => void;
-    canEdit?: boolean;
-    onSave?: () => void;
 }
 
 export const Controls: React.FC<ControlsProps> = ({
@@ -57,28 +52,23 @@ export const Controls: React.FC<ControlsProps> = ({
     setSize,
     gameMode,
     setGameMode,
-    editMode,
-    setEditMode,
     titleFont,
     setTitleFont,
     bodyFont,
     setBodyFont,
-    onReset,
-    onClear,
     onShuffle,
+    onClear,
     allCaps,
     setAllCaps,
     onPrint,
-    canEdit = true,
-    onSave,
 }) => {
     return (
         <div className="controls-panel glass-panel no-print">
-            {/* Row 1: Grid size + Edit toggle */}
+            {/* Row 1: Grid size */}
             <div className="controls-row">
                 <div className="controls-group">
                     <span className="controls-label">Grid:</span>
-                    {canEdit && [3, 4, 5].map((s) => (
+                    {[3, 4, 5].map((s) => (
                         <button
                             key={s}
                             onClick={() => setSize(s)}
@@ -89,22 +79,6 @@ export const Controls: React.FC<ControlsProps> = ({
                     ))}
                 </div>
 
-                {canEdit ? (
-                    <button
-                        onClick={() => setEditMode(!editMode)}
-                        className={`btn btn-edit ${editMode ? 'editing' : 'playing'}`}
-                    >
-                        {editMode ? '✏️ Editing' : '🎮 Playing'}
-                    </button>
-                ) : (
-                    <span className="btn btn-edit playing" style={{ opacity: 0.6, cursor: 'default' }}>
-                        🎮 Playing
-                    </span>
-                )}
-            </div>
-
-            {/* Row 2: Win mode + Fonts */}
-            <div className="controls-row">
                 <div className="controls-group">
                     <span className="controls-label">Win:</span>
                     <select
@@ -119,7 +93,10 @@ export const Controls: React.FC<ControlsProps> = ({
                         <option value="diagonal">Diagonal Only</option>
                     </select>
                 </div>
+            </div>
 
+            {/* Row 2: Fonts */}
+            <div className="controls-row">
                 <div className="controls-group">
                     <span className="controls-label">Title Font:</span>
                     <select
@@ -156,35 +133,18 @@ export const Controls: React.FC<ControlsProps> = ({
             {/* Row 3: Actions */}
             <div className="controls-row">
                 <div className="controls-group">
-                    {onSave && (
-                        <button onClick={onSave} className="btn btn-save">
-                            💾 Save
-                        </button>
-                    )}
                     <button onClick={onPrint} className="btn btn-print">
                         🖨️ Save PDF
                     </button>
-                    {canEdit && (
-                        <>
-                            <button onClick={onShuffle} className="btn">
-                                🔀 Shuffle
-                            </button>
-                            <button onClick={() => setAllCaps(!allCaps)} className={`btn btn-caps-toggle ${allCaps ? 'active' : ''}`} title={allCaps ? 'Switch to normal case' : 'Switch to ALL CAPS'}>
-                                aA
-                            </button>
-                            <button onClick={onReset} className="btn btn-danger">
-                                Reset Marks
-                            </button>
-                            <button onClick={onClear} className="btn btn-danger">
-                                Clear All
-                            </button>
-                        </>
-                    )}
-                    {!canEdit && (
-                        <button onClick={onReset} className="btn btn-danger">
-                            Reset Marks
-                        </button>
-                    )}
+                    <button onClick={onShuffle} className="btn">
+                        🔀 Shuffle
+                    </button>
+                    <button onClick={() => setAllCaps(!allCaps)} className={`btn btn-caps-toggle ${allCaps ? 'active' : ''}`} title={allCaps ? 'Normal case' : 'ALL CAPS'}>
+                        aA
+                    </button>
+                    <button onClick={onClear} className="btn btn-danger">
+                        Clear All
+                    </button>
                 </div>
             </div>
         </div>
