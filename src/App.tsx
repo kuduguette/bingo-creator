@@ -148,33 +148,33 @@ function App() {
   const handleLeaveRoom = () => { window.location.href = window.location.pathname; };
   const handleStartGame = () => { startGame(); };
 
-  // ===== Shared entries editor component =====
-  const EntriesEditor = ({ readOnly = false }: { readOnly?: boolean }) => (
+  // Presets data
+  const presets: [string, string, string, string][] = [
+    ['🔢 Numbers 1-75', 'Number Bingo', 'Classic 1-75', Array.from({ length: 75 }, (_, i) => String(i + 1)).join(', ')],
+    ['🐾 Animals', 'Animal Bingo', 'Wildlife Edition', 'Dog, Cat, Elephant, Lion, Tiger, Bear, Eagle, Dolphin, Penguin, Giraffe, Zebra, Monkey, Panda, Koala, Fox, Wolf, Rabbit, Deer, Horse, Owl, Parrot, Shark, Whale, Turtle, Snake, Frog, Butterfly, Bee, Ant, Octopus'],
+    ['🍕 Foods', 'Foodie Bingo', 'Tasty Edition', 'Pizza, Sushi, Tacos, Pasta, Burger, Ice Cream, Chocolate, Salad, Steak, Ramen, Curry, Pancakes, Waffles, Nachos, Soup, Sandwich, Hot Dog, Popcorn, Donuts, Cookies, Cake, Pie, Breadsticks, Fried Rice, Mac & Cheese, Spring Rolls, Falafel, Meatballs, Fish & Chips, Lasagna'],
+    ['🎭 Activities', 'Activity Bingo', 'Fun & Games', 'Dancing, Singing, Swimming, Hiking, Reading, Cooking, Painting, Gaming, Running, Yoga, Cycling, Surfing, Skiing, Gardening, Fishing, Camping, Knitting, Photography, Bowling, Karaoke, Baking, Skating, Climbing, Kayaking, Meditating, Juggling, Stargazing, Traveling, Volunteering, Writing'],
+    ['😊 Emotions', 'Feelings Bingo', 'Express Yourself', 'Happy, Sad, Excited, Nervous, Surprised, Angry, Grateful, Hopeful, Proud, Embarrassed, Confused, Jealous, Calm, Anxious, Amused, Bored, Content, Curious, Determined, Fearful, Inspired, Lonely, Nostalgic, Overwhelmed, Peaceful, Relieved, Shy, Silly, Thoughtful, Brave']
+  ];
+
+  // Reusable JSX fragments (NOT components, to avoid remount issues)
+  const entriesEditorJSX = (
     <div className="entries-editor">
       <textarea
         className="entries-textarea"
         value={entries}
         onChange={(e) => setEntries(e.target.value)}
         placeholder="Enter bingo entries separated by commas, e.g.: Free Space, Dancing, Singing, Laughing..."
-        readOnly={readOnly}
         style={{ fontFamily: `'${bodyFont}', sans-serif` }}
       />
-      {!readOnly && (
-        <div className="entries-presets">
-          <span className="presets-label">Presets:</span>
-          {([
-            ['🔢 Numbers 1-75', 'Number Bingo', 'Classic 1-75', Array.from({ length: 75 }, (_, i) => String(i + 1)).join(', ')],
-            ['🐾 Animals', 'Animal Bingo', 'Wildlife Edition', 'Dog, Cat, Elephant, Lion, Tiger, Bear, Eagle, Dolphin, Penguin, Giraffe, Zebra, Monkey, Panda, Koala, Fox, Wolf, Rabbit, Deer, Horse, Owl, Parrot, Shark, Whale, Turtle, Snake, Frog, Butterfly, Bee, Ant, Octopus'],
-            ['🍕 Foods', 'Foodie Bingo', 'Tasty Edition', 'Pizza, Sushi, Tacos, Pasta, Burger, Ice Cream, Chocolate, Salad, Steak, Ramen, Curry, Pancakes, Waffles, Nachos, Soup, Sandwich, Hot Dog, Popcorn, Donuts, Cookies, Cake, Pie, Breadsticks, Fried Rice, Mac & Cheese, Spring Rolls, Falafel, Meatballs, Fish & Chips, Lasagna'],
-            ['🎭 Activities', 'Activity Bingo', 'Fun & Games', 'Dancing, Singing, Swimming, Hiking, Reading, Cooking, Painting, Gaming, Running, Yoga, Cycling, Surfing, Skiing, Gardening, Fishing, Camping, Knitting, Photography, Bowling, Karaoke, Baking, Skating, Climbing, Kayaking, Meditating, Juggling, Stargazing, Traveling, Volunteering, Writing'],
-            ['😊 Emotions', 'Feelings Bingo', 'Express Yourself', 'Happy, Sad, Excited, Nervous, Surprised, Angry, Grateful, Hopeful, Proud, Embarrassed, Confused, Jealous, Calm, Anxious, Amused, Bored, Content, Curious, Determined, Fearful, Inspired, Lonely, Nostalgic, Overwhelmed, Peaceful, Relieved, Shy, Silly, Thoughtful, Brave']
-          ] as [string, string, string, string][]).map(([label, title, sub, preset]) => (
-            <button key={label} className="preset-btn" onClick={() => { setEntries(preset); setCardTitle(title); setSubtitle(sub); }}>
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="entries-presets">
+        <span className="presets-label">Presets:</span>
+        {presets.map(([label, title, sub, preset]) => (
+          <button key={label} className="preset-btn" onClick={() => { setEntries(preset); setCardTitle(title); setSubtitle(sub); }}>
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="entries-status">
         <span className={`entries-count ${isCardComplete ? 'enough' : 'not-enough'}`}>
           {parsedEntries.length} entr{parsedEntries.length === 1 ? 'y' : 'ies'}
@@ -188,20 +188,17 @@ function App() {
     </div>
   );
 
-  // ===== Title/subtitle row =====
-  const TitleRow = ({ editable = true }: { editable?: boolean }) => (
+  const editableTitleJSX = (
     <div className="card-title-row">
-      {editable ? (
-        <>
-          <input className="card-title-input" type="text" value={cardTitle} onChange={(e) => setCardTitle(e.target.value)} placeholder="Card title..." style={{ fontFamily: `'${titleFont}', sans-serif`, textTransform: allCaps ? 'uppercase' : 'none' }} />
-          <input className="card-subtitle-input" type="text" value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="Subtitle..." style={{ fontFamily: `'${titleFont}', sans-serif`, textTransform: allCaps ? 'uppercase' : 'none' }} />
-        </>
-      ) : (
-        <>
-          <div className="card-title-input" style={{ fontFamily: `'${titleFont}', sans-serif`, textTransform: allCaps ? 'uppercase' : 'none' }}>{cardTitle}</div>
-          {subtitle && <div className="card-subtitle-input" style={{ fontFamily: `'${titleFont}', sans-serif`, textTransform: allCaps ? 'uppercase' : 'none' }}>{subtitle}</div>}
-        </>
-      )}
+      <input className="card-title-input" type="text" value={cardTitle} onChange={(e) => setCardTitle(e.target.value)} placeholder="Card title..." style={{ fontFamily: `'${titleFont}', sans-serif`, textTransform: allCaps ? 'uppercase' : 'none' }} />
+      <input className="card-subtitle-input" type="text" value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="Subtitle..." style={{ fontFamily: `'${titleFont}', sans-serif`, textTransform: allCaps ? 'uppercase' : 'none' }} />
+    </div>
+  );
+
+  const readonlyTitleJSX = (
+    <div className="card-title-row">
+      <div className="card-title-input" style={{ fontFamily: `'${titleFont}', sans-serif`, textTransform: allCaps ? 'uppercase' : 'none' }}>{cardTitle}</div>
+      {subtitle && <div className="card-subtitle-input" style={{ fontFamily: `'${titleFont}', sans-serif`, textTransform: allCaps ? 'uppercase' : 'none' }}>{subtitle}</div>}
     </div>
   );
 
@@ -248,7 +245,6 @@ function App() {
           )}
 
           {isHost && !gameStarted ? (
-            // Host: set up entries
             <>
               <Controls
                 size={size} setSize={setSize} gameMode={gameMode} setGameMode={setGameMode}
@@ -257,15 +253,14 @@ function App() {
                 onPrint={() => window.print()} onClear={clearAll}
               />
               <div className="printable-area">
-                <TitleRow />
-                <EntriesEditor />
+                {editableTitleJSX}
+                {entriesEditorJSX}
               </div>
               <p className="tip-text no-print">
                 ✏️ Add at least {size * size} entries, then press Start Game in the room panel.
               </p>
             </>
           ) : !gameStarted ? (
-            // Joiner: waiting
             <div className="joiner-waiting">
               <div className="joiner-waiting-inner">
                 <div className="joiner-waiting-icon">⏳</div>
@@ -278,10 +273,9 @@ function App() {
               </div>
             </div>
           ) : (
-            // Game in progress (both host and joiner)
             <>
               <div className="printable-area" style={{ textTransform: allCaps ? 'uppercase' : 'none' }}>
-                <TitleRow editable={false} />
+                {readonlyTitleJSX}
                 <BingoBoard size={size} cells={cells} editMode={false} onCellToggle={handleCellToggle} onCellUpdate={handleCellUpdate} fontFamily={bodyFont} />
               </div>
               <div className="game-controls no-print">
@@ -313,11 +307,11 @@ function App() {
             onPrint={() => window.print()} onClear={clearAll} hideWinMode
           />
           <div className="printable-area" style={{ textTransform: allCaps ? 'uppercase' : 'none' }}>
-            <TitleRow />
+            {editableTitleJSX}
             {cells.length > 0 ? (
               <BingoBoard size={size} cells={cells} editMode={false} onCellToggle={handleCellToggle} onCellUpdate={handleCellUpdate} fontFamily={bodyFont} />
             ) : (
-              <EntriesEditor />
+              entriesEditorJSX
             )}
           </div>
           {cells.length === 0 ? (
@@ -349,3 +343,4 @@ function App() {
 }
 
 export default App;
+
