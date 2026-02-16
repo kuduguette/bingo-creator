@@ -2759,8 +2759,8 @@ body {
   position: fixed;
   bottom: 4.5rem;
   right: 1.2rem;
-  width: 280px;
-  max-height: 320px;
+  width: 320px;
+  max-height: 380px;
   background: var(--card-bg, #fff);
   border: 1px solid var(--border, #e2e8f0);
   border-radius: 16px;
@@ -2816,8 +2816,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  min-height: 100px;
-  max-height: 180px;
+  min-height: 120px;
+  max-height: 220px;
 }
 
 .chat-empty {
