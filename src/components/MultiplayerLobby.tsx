@@ -23,68 +23,65 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
         }
     }, [urlRoomCode]);
 
-
-
-    // Join/Create view
     return (
-        <div className="lobby-panel">
-            <h2 className="lobby-title">
-                <span className="lobby-title-icon">🌐</span>
-                Multiplayer Bingo
-            </h2>
+        <div className="home-hero">
+            <div className="home-brand">
+                <h1 className="home-title">🎯 Bingify</h1>
+                <p className="home-subtitle">Create & play bingo with friends in real time</p>
+            </div>
 
-            <div>
-                <label className="lobby-section-label">Your Name</label>
+            <div className="home-name-row">
+                <label className="home-label">Your Name</label>
                 <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="lobby-input"
+                    className="home-name-input"
                     placeholder="Enter your name..."
                 />
             </div>
 
-            <div className="lobby-cards">
+            <div className="home-cards">
                 {/* Create Room */}
-                <div className="lobby-card">
-                    <div className="lobby-card-title">
-                        <span>🎮</span> Create Room
-                    </div>
+                <div className="home-card home-card-create">
+                    <div className="home-card-icon">🎮</div>
+                    <h2 className="home-card-title">Create Room</h2>
+                    <p className="home-card-desc">Set up a bingo game and invite friends to join</p>
                     <button
-                        disabled={!name}
+                        disabled={!name || !isConnected}
                         onClick={() => onCreateRoom(name)}
-                        className="lobby-btn lobby-btn-create"
+                        className="home-card-btn home-btn-create"
                     >
                         Create
                     </button>
                 </div>
 
                 {/* Join Room */}
-                <div className="lobby-card">
-                    <div className="lobby-card-title">
-                        <span>🔗</span> Join Room
-                    </div>
+                <div className="home-card home-card-join">
+                    <div className="home-card-icon">🔗</div>
+                    <h2 className="home-card-title">Join Room</h2>
+                    <p className="home-card-desc">Enter a room code to join a friend's game</p>
                     <input
                         type="text"
                         value={roomInput}
                         onChange={(e) => setRoomInput(e.target.value.toUpperCase())}
                         placeholder="CODE"
-                        className="lobby-input room-code-input"
+                        className="home-code-input"
                         maxLength={4}
                     />
                     <button
-                        disabled={!name || !roomInput}
+                        disabled={!name || !roomInput || !isConnected}
                         onClick={() => onJoinRoom(roomInput, name)}
-                        className="lobby-btn lobby-btn-join"
+                        className="home-card-btn home-btn-join"
                     >
                         Join
                     </button>
                 </div>
             </div>
 
-            <div className="lobby-status">
-                <span className={`lobby-status-dot ${isConnected ? 'online' : ''}`} />
-                {isConnected ? 'Server connected' : 'Connecting to server...'}
+            <div className="home-status">
+                <span className={`home-status-dot ${isConnected ? 'online' : ''}`} />
+                {isConnected ? 'Connected to server' : 'Connecting...'}
             </div>
         </div>
     );

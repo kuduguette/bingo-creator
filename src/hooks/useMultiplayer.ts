@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { io, type Socket } from 'socket.io-client';
 
-// URL for local Development. In production this would be dynamic.
 const SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export interface Player {
@@ -9,7 +8,7 @@ export interface Player {
     name: string;
 }
 
-export interface GameState {
+export interface RoomSettings {
     size: number;
     gameMode: string;
     cardTitle: string;
@@ -17,8 +16,7 @@ export interface GameState {
     titleFont: string;
     bodyFont: string;
     allCaps: boolean;
-    // We share the *content* of cells (text/image) but not the *marked* state
-    cellContents: { id: number; text: string; image: string | null }[];
+    entries: string;
 }
 
 export type CellContent = { id: number; text: string; image: string | null };
@@ -32,6 +30,7 @@ export const useMultiplayer = () => {
     const [gameStarted, setGameStarted] = useState(false);
     const [hostId, setHostId] = useState<string | null>(null);
     const [shuffledCardCallback, setShuffledCardCallback] = useState<((contents: CellContent[]) => void) | null>(null);
+    const [roomSettingsCallback, setRoomSettingsCallback] = useState<((settings: RoomSettings) => void) | null>(null);
 
     // Initialize socket
     useEffect(() => {
@@ -86,13 +85,31 @@ export const useMultiplayer = () => {
         return () => { socket.off('shuffled_card', handler); };
     }, [socket, shuffledCardCallback]);
 
+    // Listen for room settings updates (from host)
+    useEffect(() => {
+        if (!socket) return;
+
+        const handler = (settings: RoomSettings) => {
+            if (roomSettingsCallback) {
+                roomSettingsCallback(settings);
+            }
+        };
+
+        socket.on('room_settings_update', handler);
+        return () => { socket.off('room_settings_update', handler); };
+    }, [socket, roomSettingsCallback]);
+
     const onShuffledCard = useCallback((cb: (contents: CellContent[]) => void) => {
         setShuffledCardCallback(() => cb);
     }, []);
 
-    const createRoom = useCallback((playerName: string, cardData: CellContent[]) => {
+    const onRoomSettings = useCallback((cb: (settings: RoomSettings) => void) => {
+        setRoomSettingsCallback(() => cb);
+    }, []);
+
+    const createRoom = useCallback((playerName: string) => {
         if (!socket) return;
-        socket.emit('create_room', { hostName: playerName, cardData }, (response: any) => {
+        socket.emit('create_room', { hostName: playerName }, (response: any) => {
             setRoomCode(response.roomId);
             setPlayerId(response.playerId);
             setHostId(response.playerId);
@@ -110,20 +127,20 @@ export const useMultiplayer = () => {
             }
             setRoomCode(response.roomId);
             setPlayerId(response.playerId);
-            setHostId(null); // Joiner is not the host
+            setHostId(response.hostId);
             setPlayers(response.players);
             setGameStarted(false);
 
-            // If the room has card data, apply it to the joiner's board
-            if (response.cardData && response.cardData.length > 0 && shuffledCardCallback) {
-                shuffledCardCallback(response.cardData);
+            // If the room already has settings, apply them
+            if (response.settings && roomSettingsCallback) {
+                roomSettingsCallback(response.settings);
             }
         });
-    }, [socket, shuffledCardCallback]);
+    }, [socket, roomSettingsCallback]);
 
-    const updateGameState = useCallback((state: GameState) => {
+    const updateRoomSettings = useCallback((settings: RoomSettings) => {
         if (!socket || !roomCode) return;
-        socket.emit('update_game_state', roomCode, state);
+        socket.emit('update_room_settings', roomCode, settings);
     }, [socket, roomCode]);
 
     const declareWin = useCallback((winType: string, playerName: string) => {
@@ -134,7 +151,7 @@ export const useMultiplayer = () => {
     const startGame = useCallback(() => {
         if (!socket || !roomCode) return;
         socket.emit('start_game', roomCode);
-        setGameStarted(true); // Also set locally for the host
+        setGameStarted(true);
     }, [socket, roomCode]);
 
     const isHost = playerId !== null && playerId === hostId;
@@ -149,9 +166,10 @@ export const useMultiplayer = () => {
         isHost,
         createRoom,
         joinRoom,
-        updateGameState,
+        updateRoomSettings,
         declareWin,
         startGame,
-        onShuffledCard
+        onShuffledCard,
+        onRoomSettings
     };
 };

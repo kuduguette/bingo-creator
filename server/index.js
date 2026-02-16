@@ -28,31 +28,40 @@ const io = new Server(httpServer, {
     }
 });
 
-// Store rooms in memory (for now)
+// Store rooms in memory
 // Room structure:
 // {
 //   id: string,
 //   hostId: string,
-//   players: { id: string, name: string, ready: boolean }[],
-//   gameState: { ... } | null
+//   players: [{ id, name }],
+//   settings: { size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, entries }
 // }
 const rooms = new Map();
+
+// Fisher-Yates shuffle helper
+function shuffleArray(arr) {
+    const shuffled = [...arr];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+}
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
-    socket.on('create_room', ({ hostName, cardData }, callback) => {
+    socket.on('create_room', ({ hostName }, callback) => {
         const roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
         rooms.set(roomId, {
             id: roomId,
             hostId: socket.id,
-            players: [{ id: socket.id, name: hostName, ready: false }],
-            gameState: null,
-            cardData: cardData || [] // Store the card content for shuffling
+            players: [{ id: socket.id, name: hostName }],
+            settings: null
         });
         socket.join(roomId);
         callback({ roomId, playerId: socket.id });
-        console.log(`Room ${roomId} created by ${hostName} with ${(cardData || []).length} cells`);
+        console.log(`Room ${roomId} created by ${hostName}`);
     });
 
     socket.on('join_room', ({ roomId, playerName }, callback) => {
@@ -61,33 +70,29 @@ io.on('connection', (socket) => {
             return callback({ error: 'Room not found' });
         }
 
-        room.players.push({ id: socket.id, name: playerName, ready: false });
+        room.players.push({ id: socket.id, name: playerName });
         socket.join(roomId);
 
         // Notify others in room
         socket.to(roomId).emit('player_joined', { id: socket.id, name: playerName });
 
-        // Send current game state to new player if it exists
-        if (room.gameState) {
-            socket.emit('game_state_update', room.gameState);
-        }
-
-        // Return room info (players list + card data so joiner can see the card)
+        // Return room info + current settings so joiner can see what's configured
         callback({
             roomId,
             playerId: socket.id,
+            hostId: room.hostId,
             players: room.players,
-            cardData: room.cardData
+            settings: room.settings
         });
         console.log(`${playerName} joined room ${roomId}`);
     });
 
-    socket.on('update_game_state', (roomId, newState) => {
+    // Host updates room settings (entries, title, size, etc.)
+    socket.on('update_room_settings', (roomId, settings) => {
         const room = rooms.get(roomId);
-        // Only host can update global game config usually, but for now allow anyone
-        if (room) {
-            room.gameState = newState;
-            socket.to(roomId).emit('game_state_update', newState);
+        if (room && room.hostId === socket.id) {
+            room.settings = settings;
+            socket.to(roomId).emit('room_settings_update', settings);
         }
     });
 
@@ -95,31 +100,29 @@ io.on('connection', (socket) => {
         socket.to(roomId).emit('player_won', { playerName, winType });
     });
 
-    // Fisher-Yates shuffle helper
-    function shuffleArray(arr) {
-        const shuffled = [...arr];
-        for (let i = shuffled.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-        }
-        return shuffled;
-    }
-
     socket.on('start_game', (roomId) => {
         const room = rooms.get(roomId);
-        if (room) {
-            // Send each player a uniquely shuffled version of the card
-            for (const player of room.players) {
-                const shuffledContents = shuffleArray(room.cardData).map((cell, idx) => ({
-                    id: idx,
-                    text: cell.text,
-                    image: cell.image
-                }));
-                io.to(player.id).emit('shuffled_card', shuffledContents);
-            }
-            io.to(roomId).emit('game_started');
-            console.log(`Game started in room ${roomId} — shuffled cards sent to ${room.players.length} players`);
+        if (!room || !room.settings) return;
+
+        const { entries, size } = room.settings;
+        const entryList = entries.split(',').map(e => e.trim()).filter(e => e.length > 0);
+        const needed = size * size;
+
+        if (entryList.length < needed) return;
+
+        // Send each player a uniquely shuffled board
+        for (const player of room.players) {
+            const shuffled = shuffleArray(entryList);
+            const picked = shuffled.slice(0, needed);
+            const cellContents = picked.map((text, idx) => ({
+                id: idx,
+                text,
+                image: null
+            }));
+            io.to(player.id).emit('shuffled_card', cellContents);
         }
+        io.to(roomId).emit('game_started');
+        console.log(`Game started in room ${roomId} — shuffled cards sent to ${room.players.length} players`);
     });
 
     socket.on('disconnecting', () => {
@@ -131,7 +134,6 @@ io.on('connection', (socket) => {
                     rooms.delete(room);
                 } else {
                     io.to(room).emit('player_left', { id: socket.id });
-                    // If host left, assign new host? (Skip for now)
                 }
             }
         }

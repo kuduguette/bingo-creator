@@ -3,10 +3,10 @@ import { BingoBoard, type CellData } from './components/BingoBoard';
 import { Controls } from './components/Controls';
 import { MultiplayerLobby } from './components/MultiplayerLobby';
 import { RoomPanel } from './components/RoomPanel';
-import { AuthModal } from './components/AuthModal';
 import { MyCards } from './components/MyCards';
 import { GameHistory } from './components/GameHistory';
-import { useMultiplayer, type GameState, type CellContent } from './hooks/useMultiplayer';
+import { AuthModal } from './components/AuthModal';
+import { useMultiplayer, type CellContent, type RoomSettings } from './hooks/useMultiplayer';
 import { useAuth } from './hooks/useAuth';
 import { checkWin, type BingoGrid } from './utils/winLogic';
 import confetti from 'canvas-confetti';
@@ -36,8 +36,8 @@ function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [appView, setAppView] = useState<'main' | 'my-cards' | 'game-history'>('main');
 
-  // Multiplayer
-  const [view, setView] = useState<'local' | 'lobby' | 'room'>('local');
+  // Multiplayer — lobby is the default home view
+  const [view, setView] = useState<'lobby' | 'room'>('lobby');
   const [urlRoomCode, setUrlRoomCode] = useState<string | null>(null);
   const {
     isConnected,
@@ -47,11 +47,12 @@ function App() {
     isHost,
     createRoom,
     joinRoom,
-    updateGameState,
+    updateRoomSettings,
     socket,
     declareWin,
     startGame,
-    onShuffledCard
+    onShuffledCard,
+    onRoomSettings
   } = useMultiplayer();
 
   // Parse comma-separated entries into trimmed array
@@ -60,18 +61,14 @@ function App() {
   // A card is "complete" when there are enough entries
   const isCardComplete = parsedEntries.length >= size * size;
 
-  // Can only go online when the card is complete AND we're in play mode
-  const canGoOnline = isCardComplete && !editMode;
-
-  // Only the host (or local/solo play) can edit the card
-  const canEdit = !roomCode || isHost;
+  // Only the host can edit the card
+  const canEdit = isHost;
 
   // Generate a random board from entries
   const generateBoard = useCallback((entryList?: string[]) => {
     const pool = entryList || parsedEntries;
     if (pool.length < size * size) return;
 
-    // Fisher-Yates shuffle the full pool, then take the first size*size
     const shuffled = [...pool];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -92,13 +89,11 @@ function App() {
     const roomParam = params.get('room');
     if (roomParam) {
       setUrlRoomCode(roomParam.toUpperCase());
-      setView('lobby');
-      // Clean the URL without refresh
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
 
-  // Register the shuffled card handler
+  // Register the shuffled card handler (server sends unique board to each player)
   useEffect(() => {
     onShuffledCard((contents: CellContent[]) => {
       setCells(() => {
@@ -114,6 +109,20 @@ function App() {
     });
   }, [onShuffledCard]);
 
+  // Register the room settings handler (joiner receives host's settings)
+  useEffect(() => {
+    onRoomSettings((settings: RoomSettings) => {
+      setSize(settings.size);
+      setGameMode(settings.gameMode);
+      setCardTitle(settings.cardTitle);
+      setSubtitle(settings.subtitle);
+      setTitleFont(settings.titleFont);
+      setBodyFont(settings.bodyFont);
+      setAllCaps(settings.allCaps);
+      setEntries(settings.entries);
+    });
+  }, [onRoomSettings]);
+
   // Auto-transition to room view when room is created/joined
   useEffect(() => {
     if (roomCode && view === 'lobby') {
@@ -121,36 +130,49 @@ function App() {
     }
   }, [roomCode, view]);
 
-  // When gameStarted changes, switch to play mode and generate board
+  // When gameStarted changes, switch to play mode
   useEffect(() => {
     if (gameStarted && editMode) {
       setEditMode(false);
-      generateBoard();
     }
-  }, [gameStarted, editMode, generateBoard]);
+  }, [gameStarted, editMode]);
 
   // Theme toggle
   useEffect(() => {
     document.documentElement.classList.toggle('dark-theme', darkMode);
   }, [darkMode]);
 
-  // Handle edit mode toggle — generate board when switching to play
+  // Handle edit mode toggle — generate board when switching to play (local only)
   const handleSetEditMode = useCallback((val: boolean) => {
-    if (!val && editMode) {
-      // Switching from edit → play: generate board
+    if (!val && editMode && !roomCode) {
       generateBoard();
     }
     setEditMode(val);
-  }, [editMode, generateBoard]);
+  }, [editMode, generateBoard, roomCode]);
 
-  // Initialize cells when size changes (only when in play mode)
+  // Initialize cells when size changes
   useEffect(() => {
-    if (!editMode && cells.length !== size * size) {
+    if (!editMode && cells.length !== size * size && !roomCode) {
       generateBoard();
     }
     setHasWon(false);
     winDismissedRef.current = false;
   }, [size]);
+
+  // Host syncs settings to server whenever they change
+  useEffect(() => {
+    if (!roomCode || !isHost || !isConnected) return;
+    updateRoomSettings({
+      size,
+      gameMode,
+      cardTitle,
+      subtitle,
+      titleFont,
+      bodyFont,
+      allCaps,
+      entries
+    });
+  }, [size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, entries, roomCode, isHost, isConnected, updateRoomSettings]);
 
   // Check win condition
   useEffect(() => {
@@ -170,7 +192,6 @@ function App() {
       const myName = players.find(p => p.id === socket?.id)?.name || 'Unknown';
       if (roomCode) {
         declareWin(mode, myName);
-        // Log to game history if logged in
         if (isLoggedIn) {
           saveGameResult({
             roomCode,
@@ -183,62 +204,6 @@ function App() {
       }
     }
   }, [cells, editMode, gameMode, size, hasWon, roomCode, declareWin, players, socket, isLoggedIn, saveGameResult, cardTitle]);
-
-  // Sync Game State to others when editing
-  useEffect(() => {
-    if (roomCode && isConnected && !editMode) {
-      return;
-    }
-
-    if (roomCode && isConnected && editMode) {
-      const state: GameState = {
-        size,
-        gameMode,
-        cardTitle,
-        subtitle,
-        titleFont,
-        bodyFont,
-        allCaps,
-        cellContents: cells.map(c => ({ id: c.id, text: c.text, image: c.image }))
-      };
-      updateGameState(state);
-    }
-  }, [size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, cells, roomCode, isConnected, editMode, updateGameState]);
-
-  // Listen for Game State updates
-  useEffect(() => {
-    if (!socket) return;
-
-    socket.on('game_state_update', (state: GameState) => {
-      if (document.activeElement?.tagName === 'INPUT') return;
-
-      setSize(state.size);
-      setGameMode(state.gameMode);
-      setCardTitle(state.cardTitle);
-      setSubtitle(state.subtitle);
-      setTitleFont(state.titleFont);
-      setBodyFont(state.bodyFont);
-      setAllCaps(state.allCaps);
-
-      setCells(prev => {
-        const newCells = Array.from({ length: state.size * state.size }, (_, i) => {
-          const content = state.cellContents.find(c => c.id === i);
-          const existing = prev.find(p => p.id === i);
-          return {
-            id: i,
-            text: content?.text || '',
-            image: content?.image || null,
-            marked: existing?.marked || false
-          };
-        });
-        return newCells;
-      });
-    });
-
-    return () => {
-      socket.off('game_state_update');
-    };
-  }, [socket]);
 
   const triggerWin = useCallback(() => {
     const fire = () => {
@@ -295,61 +260,12 @@ function App() {
     window.print();
   };
 
-
-
   const handleLeaveRoom = () => {
-    // Reload to reset socket state cleanly
     window.location.href = window.location.pathname;
   };
 
   const handleStartGame = () => {
     startGame();
-  };
-
-  // Determine what multiplayer button shows
-  const getMultiplayerButton = () => {
-    if (view === 'lobby') {
-      return (
-        <button
-          className="multiplayer-btn"
-          onClick={() => setView('local')}
-        >
-          <span className="multiplayer-btn-icon">←</span>
-          Back
-        </button>
-      );
-    }
-    if (view === 'room' || roomCode) {
-      return (
-        <button
-          className="multiplayer-btn connected"
-          onClick={() => setView('lobby')}
-        >
-          <span className="multiplayer-status">
-            <span className="pulse-dot" />
-            {roomCode}
-          </span>
-        </button>
-      );
-    }
-    return (
-      <button
-        className="multiplayer-btn"
-        onClick={() => setView('lobby')}
-        disabled={!canGoOnline}
-        title={
-          editMode
-            ? 'Switch to Play mode first'
-            : !isCardComplete
-              ? 'Fill in all bingo cells first'
-              : 'Play online with friends'
-        }
-        style={{ opacity: canGoOnline ? 1 : 0.5 }}
-      >
-        <span className="multiplayer-btn-icon">🌐</span>
-        Play Online
-      </button>
-    );
   };
 
   return (
@@ -387,11 +303,21 @@ function App() {
           )}
         </div>
 
-        <h1 className="app-title">Bingo Creator</h1>
+        <h1 className="app-title">Bingify</h1>
 
-        {/* Right: Multiplayer */}
+        {/* Right: Room status or back */}
         <div className="header-right">
-          {appView === 'main' && getMultiplayerButton()}
+          {view === 'room' && roomCode && (
+            <button
+              className="multiplayer-btn connected"
+              onClick={handleLeaveRoom}
+            >
+              <span className="multiplayer-status">
+                <span className="pulse-dot" />
+                {roomCode}
+              </span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -418,10 +344,10 @@ function App() {
               setTitleFont(card.title_font || 'Inter');
               setBodyFont(card.body_font || 'Inter');
               setAllCaps(!!card.all_caps);
-              // Restore entries from cells
               setEntries(card.cells.map((c: any) => c.text).filter((t: string) => t).join(', '));
               setEditMode(true);
               setAppView('main');
+              setView('room'); // go to room view with loaded card if in room
             }
           }}
           onDelete={deleteCard}
@@ -435,9 +361,7 @@ function App() {
       ) : view === 'lobby' ? (
         <MultiplayerLobby
           onCreateRoom={(name: string) => {
-            // Send entries as the card data for multiplayer
-            const entryList = parsedEntries;
-            createRoom(name, entryList.map((text, i) => ({ id: i, text, image: null })));
+            createRoom(name);
           }}
           onJoinRoom={joinRoom}
           isConnected={isConnected}
@@ -445,8 +369,8 @@ function App() {
         />
       ) : (
         <>
-          {/* Floating Room Panel when in a multiplayer room */}
-          {roomCode && view === 'room' && (
+          {/* Room Panel (floating) */}
+          {roomCode && (
             <RoomPanel
               roomCode={roomCode}
               players={players}
@@ -458,121 +382,167 @@ function App() {
             />
           )}
 
-          <Controls
-            size={size}
-            setSize={setSize}
-            gameMode={gameMode}
-            setGameMode={setGameMode}
-            editMode={editMode}
-            setEditMode={handleSetEditMode}
-            titleFont={titleFont}
-            setTitleFont={setTitleFont}
-            bodyFont={bodyFont}
-            setBodyFont={setBodyFont}
-            onReset={resetMarks}
-            onClear={clearAll}
-            onShuffle={shuffleCells}
-            allCaps={allCaps}
-            setAllCaps={setAllCaps}
-            onPrint={handlePrint}
-            canEdit={canEdit}
-            onSave={isLoggedIn ? () => {
-              saveCard({
-                title: cardTitle,
-                subtitle,
-                size,
-                gameMode,
-                cells: parsedEntries.map((text, i) => ({ id: i, text, image: null })),
-                titleFont,
-                bodyFont,
-                allCaps
-              }).then(() => alert('Card saved!')).catch(e => alert(e.message));
-            } : undefined}
-          />
-
-          {/* Printable Area */}
-          <div className="printable-area" style={{ textTransform: allCaps && !editMode ? 'uppercase' : 'none' }}>
-            {/* Title + Subtitle */}
-            <div className="card-title-row">
-              <input
-                className="card-title-input"
-                type="text"
-                value={cardTitle}
-                onChange={(e) => setCardTitle(e.target.value)}
-                placeholder="Enter card title..."
-                readOnly={!canEdit}
-                style={{ fontFamily: `'${titleFont}', sans-serif`, textTransform: allCaps && !editMode ? 'uppercase' : 'none' }}
-              />
-              <input
-                className="card-subtitle-input"
-                type="text"
-                value={subtitle}
-                onChange={(e) => setSubtitle(e.target.value)}
-                placeholder="Author / subtitle..."
-                readOnly={!canEdit}
-                style={{ fontFamily: `'${titleFont}', sans-serif`, textTransform: allCaps && !editMode ? 'uppercase' : 'none' }}
-              />
-            </div>
-
-            {editMode ? (
-              /* ===== EDIT MODE: Comma-separated entries textarea ===== */
-              <div className="entries-editor">
-                <textarea
-                  className="entries-textarea"
-                  value={entries}
-                  onChange={(e) => setEntries(e.target.value)}
-                  placeholder="Enter bingo entries separated by commas, e.g.: Free Space, Dancing, Singing, Laughing, Cooking, Reading, Running..."
-                  readOnly={!canEdit}
-                  style={{ fontFamily: `'${bodyFont}', sans-serif` }}
-                />
-                <div className="entries-presets">
-                  <span className="presets-label">Presets:</span>
-                  {([
-                    ['🔢 Numbers 1-75', 'Number Bingo', 'Classic 1-75', Array.from({ length: 75 }, (_, i) => String(i + 1)).join(', ')],
-                    ['🐾 Animals', 'Animal Bingo', 'Wildlife Edition', 'Dog, Cat, Elephant, Lion, Tiger, Bear, Eagle, Dolphin, Penguin, Giraffe, Zebra, Monkey, Panda, Koala, Fox, Wolf, Rabbit, Deer, Horse, Owl, Parrot, Shark, Whale, Turtle, Snake, Frog, Butterfly, Bee, Ant, Octopus'],
-                    ['🍕 Foods', 'Foodie Bingo', 'Tasty Edition', 'Pizza, Sushi, Tacos, Pasta, Burger, Ice Cream, Chocolate, Salad, Steak, Ramen, Curry, Pancakes, Waffles, Nachos, Soup, Sandwich, Hot Dog, Popcorn, Donuts, Cookies, Cake, Pie, Breadsticks, Fried Rice, Mac & Cheese, Spring Rolls, Falafel, Meatballs, Fish & Chips, Lasagna'],
-                    ['🎭 Activities', 'Activity Bingo', 'Fun & Games', 'Dancing, Singing, Swimming, Hiking, Reading, Cooking, Painting, Gaming, Running, Yoga, Cycling, Surfing, Skiing, Gardening, Fishing, Camping, Knitting, Photography, Bowling, Karaoke, Baking, Skating, Climbing, Kayaking, Meditating, Juggling, Stargazing, Traveling, Volunteering, Writing'],
-                    ['😊 Emotions', 'Feelings Bingo', 'Express Yourself', 'Happy, Sad, Excited, Nervous, Surprised, Angry, Grateful, Hopeful, Proud, Embarrassed, Confused, Jealous, Calm, Anxious, Amused, Bored, Content, Curious, Determined, Fearful, Inspired, Lonely, Nostalgic, Overwhelmed, Peaceful, Relieved, Shy, Silly, Thoughtful, Brave']
-                  ] as [string, string, string, string][]).map(([label, title, sub, preset]) => (
-                    <button
-                      key={label}
-                      className="preset-btn"
-                      onClick={() => { setEntries(preset); setCardTitle(title); setSubtitle(sub); }}
-                      title={`Load ${label} preset`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <div className="entries-status">
-                  <span className={`entries-count ${isCardComplete ? 'enough' : 'not-enough'}`}>
-                    {parsedEntries.length} entr{parsedEntries.length === 1 ? 'y' : 'ies'}
-                  </span>
-                  <span className="entries-needed">
-                    {isCardComplete
-                      ? `✅ Ready! (need ${size * size}, have ${parsedEntries.length})`
-                      : `Need at least ${size * size} entries (${size * size - parsedEntries.length} more)`}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              /* ===== PLAY MODE: Bingo board ===== */
-              <BingoBoard
+          {isHost ? (
+            /* ===== HOST VIEW: Full editor ===== */
+            <>
+              <Controls
                 size={size}
-                cells={cells}
-                editMode={false}
-                onCellToggle={handleCellToggle}
-                onCellUpdate={handleCellUpdate}
-                fontFamily={bodyFont}
+                setSize={setSize}
+                gameMode={gameMode}
+                setGameMode={setGameMode}
+                editMode={editMode}
+                setEditMode={handleSetEditMode}
+                titleFont={titleFont}
+                setTitleFont={setTitleFont}
+                bodyFont={bodyFont}
+                setBodyFont={setBodyFont}
+                onReset={resetMarks}
+                onClear={clearAll}
+                onShuffle={shuffleCells}
+                allCaps={allCaps}
+                setAllCaps={setAllCaps}
+                onPrint={handlePrint}
+                canEdit={canEdit}
+                onSave={isLoggedIn ? () => {
+                  saveCard({
+                    title: cardTitle,
+                    subtitle,
+                    size,
+                    gameMode,
+                    cells: parsedEntries.map((text, i) => ({ id: i, text, image: null })),
+                    titleFont,
+                    bodyFont,
+                    allCaps
+                  }).then(() => alert('Card saved!')).catch(e => alert(e.message));
+                } : undefined}
               />
-            )}
-          </div>
 
-          <p className="tip-text no-print">
-            {editMode
-              ? `✏️ Type entries separated by commas. You need at least ${size * size} for a ${size}×${size} board.`
-              : '🎮 Click a square to mark it. Get BINGO to win!'}
-          </p>
+              {/* Printable Area */}
+              <div className="printable-area" style={{ textTransform: allCaps && !editMode ? 'uppercase' : 'none' }}>
+                <div className="card-title-row">
+                  <input
+                    className="card-title-input"
+                    type="text"
+                    value={cardTitle}
+                    onChange={(e) => setCardTitle(e.target.value)}
+                    placeholder="Enter card title..."
+                    style={{ fontFamily: `'${titleFont}', sans-serif`, textTransform: allCaps && !editMode ? 'uppercase' : 'none' }}
+                  />
+                  <input
+                    className="card-subtitle-input"
+                    type="text"
+                    value={subtitle}
+                    onChange={(e) => setSubtitle(e.target.value)}
+                    placeholder="Author / subtitle..."
+                    style={{ fontFamily: `'${titleFont}', sans-serif`, textTransform: allCaps && !editMode ? 'uppercase' : 'none' }}
+                  />
+                </div>
+
+                {editMode ? (
+                  <div className="entries-editor">
+                    <textarea
+                      className="entries-textarea"
+                      value={entries}
+                      onChange={(e) => setEntries(e.target.value)}
+                      placeholder="Enter bingo entries separated by commas, e.g.: Free Space, Dancing, Singing, Laughing, Cooking, Reading, Running..."
+                      style={{ fontFamily: `'${bodyFont}', sans-serif` }}
+                    />
+                    <div className="entries-presets">
+                      <span className="presets-label">Presets:</span>
+                      {([
+                        ['🔢 Numbers 1-75', 'Number Bingo', 'Classic 1-75', Array.from({ length: 75 }, (_, i) => String(i + 1)).join(', ')],
+                        ['🐾 Animals', 'Animal Bingo', 'Wildlife Edition', 'Dog, Cat, Elephant, Lion, Tiger, Bear, Eagle, Dolphin, Penguin, Giraffe, Zebra, Monkey, Panda, Koala, Fox, Wolf, Rabbit, Deer, Horse, Owl, Parrot, Shark, Whale, Turtle, Snake, Frog, Butterfly, Bee, Ant, Octopus'],
+                        ['🍕 Foods', 'Foodie Bingo', 'Tasty Edition', 'Pizza, Sushi, Tacos, Pasta, Burger, Ice Cream, Chocolate, Salad, Steak, Ramen, Curry, Pancakes, Waffles, Nachos, Soup, Sandwich, Hot Dog, Popcorn, Donuts, Cookies, Cake, Pie, Breadsticks, Fried Rice, Mac & Cheese, Spring Rolls, Falafel, Meatballs, Fish & Chips, Lasagna'],
+                        ['🎭 Activities', 'Activity Bingo', 'Fun & Games', 'Dancing, Singing, Swimming, Hiking, Reading, Cooking, Painting, Gaming, Running, Yoga, Cycling, Surfing, Skiing, Gardening, Fishing, Camping, Knitting, Photography, Bowling, Karaoke, Baking, Skating, Climbing, Kayaking, Meditating, Juggling, Stargazing, Traveling, Volunteering, Writing'],
+                        ['😊 Emotions', 'Feelings Bingo', 'Express Yourself', 'Happy, Sad, Excited, Nervous, Surprised, Angry, Grateful, Hopeful, Proud, Embarrassed, Confused, Jealous, Calm, Anxious, Amused, Bored, Content, Curious, Determined, Fearful, Inspired, Lonely, Nostalgic, Overwhelmed, Peaceful, Relieved, Shy, Silly, Thoughtful, Brave']
+                      ] as [string, string, string, string][]).map(([label, title, sub, preset]) => (
+                        <button
+                          key={label}
+                          className="preset-btn"
+                          onClick={() => { setEntries(preset); setCardTitle(title); setSubtitle(sub); }}
+                          title={`Load ${label} preset`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="entries-status">
+                      <span className={`entries-count ${isCardComplete ? 'enough' : 'not-enough'}`}>
+                        {parsedEntries.length} entr{parsedEntries.length === 1 ? 'y' : 'ies'}
+                      </span>
+                      <span className="entries-needed">
+                        {isCardComplete
+                          ? `✅ Ready! (need ${size * size}, have ${parsedEntries.length})`
+                          : `Need at least ${size * size} entries (${size * size - parsedEntries.length} more)`}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <BingoBoard
+                    size={size}
+                    cells={cells}
+                    editMode={false}
+                    onCellToggle={handleCellToggle}
+                    onCellUpdate={handleCellUpdate}
+                    fontFamily={bodyFont}
+                  />
+                )}
+              </div>
+
+              <p className="tip-text no-print">
+                {editMode
+                  ? `✏️ Type entries separated by commas. You need at least ${size * size} for a ${size}×${size} board.`
+                  : '🎮 Click a square to mark it. Get BINGO to win!'}
+              </p>
+            </>
+          ) : (
+            /* ===== JOINER VIEW: Waiting or playing ===== */
+            <>
+              {!gameStarted ? (
+                <div className="joiner-waiting">
+                  <div className="joiner-waiting-inner">
+                    <div className="joiner-waiting-icon">⏳</div>
+                    <h2>Waiting for Host</h2>
+                    <p>The room host is setting up the bingo card.<br />Your board will appear when the game starts!</p>
+                    <div className="joiner-info">
+                      <div className="joiner-info-item">
+                        <strong>Card:</strong> {cardTitle || 'Not set yet'}
+                      </div>
+                      <div className="joiner-info-item">
+                        <strong>Entries:</strong> {parsedEntries.length} / {size * size} needed
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="printable-area" style={{ textTransform: allCaps ? 'uppercase' : 'none' }}>
+                    <div className="card-title-row">
+                      <div className="card-title-input" style={{ fontFamily: `'${titleFont}', sans-serif` }}>
+                        {cardTitle}
+                      </div>
+                      {subtitle && (
+                        <div className="card-subtitle-input" style={{ fontFamily: `'${titleFont}', sans-serif` }}>
+                          {subtitle}
+                        </div>
+                      )}
+                    </div>
+                    <BingoBoard
+                      size={size}
+                      cells={cells}
+                      editMode={false}
+                      onCellToggle={handleCellToggle}
+                      onCellUpdate={handleCellUpdate}
+                      fontFamily={bodyFont}
+                    />
+                  </div>
+                  <p className="tip-text no-print">
+                    🎮 Click a square to mark it. Get BINGO to win!
+                  </p>
+                </>
+              )}
+            </>
+          )}
 
           {/* Win Banner */}
           {hasWon && (
