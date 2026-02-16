@@ -15,6 +15,7 @@ interface BingoBoardProps {
     onCellToggle: (id: number) => void;
     onCellUpdate: (id: number, text: string, image: string | null) => void;
     fontFamily: string;
+    calledEntries?: string[];
 }
 
 export const BingoBoard: React.FC<BingoBoardProps> = ({
@@ -24,6 +25,7 @@ export const BingoBoard: React.FC<BingoBoardProps> = ({
     onCellToggle,
     onCellUpdate,
     fontFamily,
+    calledEntries = [],
 }) => {
     return (
         <div
@@ -41,6 +43,7 @@ export const BingoBoard: React.FC<BingoBoardProps> = ({
                     gridSize={size}
                     onToggle={onCellToggle}
                     onUpdate={onCellUpdate}
+                    called={calledEntries.includes(cell.text)}
                 />
             ))}
         </div>

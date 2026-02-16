@@ -384,7 +384,7 @@ function App() {
 
               <div className="printable-area" style={{ textTransform: allCaps ? 'uppercase' : 'none' }}>
                 {readonlyTitleJSX}
-                <BingoBoard size={size} cells={cells} editMode={false} onCellToggle={handleCellToggle} onCellUpdate={handleCellUpdate} fontFamily={bodyFont} />
+                <BingoBoard size={size} cells={cells} editMode={false} onCellToggle={handleCellToggle} onCellUpdate={handleCellUpdate} fontFamily={bodyFont} calledEntries={callerEnabled ? calledEntries : []} />
               </div>
               <div className="game-controls no-print">
                 <button onClick={resetMarks} className="btn btn-danger">Reset Marks</button>

@@ -15,6 +15,7 @@ interface BingoCellProps {
     gridSize: number;
     onToggle: (id: number) => void;
     onUpdate: (id: number, text: string, image: string | null) => void;
+    called?: boolean;
 }
 
 export const BingoCell: React.FC<BingoCellProps> = ({
@@ -26,6 +27,7 @@ export const BingoCell: React.FC<BingoCellProps> = ({
     gridSize,
     onToggle,
     onUpdate,
+    called = false,
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -54,6 +56,7 @@ export const BingoCell: React.FC<BingoCellProps> = ({
         'bingo-cell',
         marked && !editMode ? 'marked' : '',
         editMode ? 'edit-mode' : '',
+        called && !marked && !editMode ? 'called' : '',
     ].filter(Boolean).join(' ');
 
     return (
