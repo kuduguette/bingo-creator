@@ -35,9 +35,9 @@ function App() {
 
   // Multiplayer
   const {
-    isConnected, roomCode, players, gameStarted, isHost, playerId,
+    isConnected, roomCode, players, gameStarted, gameOver, isHost, playerId,
     createRoom, joinRoom, updateRoomSettings, socket,
-    declareWin, startGame, nextRound, sendMessage, messages,
+    declareWin, startGame, sendMessage, messages,
     scores, currentRound, totalRounds: hookTotalRounds,
     latestScoreEvent, clearScoreEvent,
     calledEntries, currentCall, callerRemaining,
@@ -180,9 +180,6 @@ function App() {
   const dismissWin = () => { setHasWon(false); winDismissedRef.current = true; };
   const handleLeaveRoom = () => { window.location.href = window.location.pathname; };
   const handleStartGame = () => { startGame(); };
-  const handleNextRound = () => { nextRound(); };
-
-  const isLastRound = currentRound >= (hookTotalRounds || totalRounds);
 
 
   // Sort players by score for the scoreboard
@@ -391,11 +388,6 @@ function App() {
               </div>
               <div className="game-controls no-print">
                 <button onClick={resetMarks} className="btn btn-danger">Reset Marks</button>
-                {isHost && !isLastRound && (
-                  <button onClick={handleNextRound} className="btn btn-next-round">
-                    ▶ Next Round ({currentRound + 1}/{hookTotalRounds || totalRounds})
-                  </button>
-                )}
               </div>
               <p className="tip-text no-print">
                 🎮 Round {currentRound} of {hookTotalRounds || totalRounds} — Click a square to mark it!
@@ -420,6 +412,26 @@ function App() {
                 <h2>🎉 BINGO!</h2>
                 <p>You got a {gameMode === 'blackout' ? 'Blackout' : gameMode === 'any' ? 'Line' : gameMode}!</p>
                 <button className="btn" onClick={dismissWin}>Keep Playing</button>
+              </div>
+            </div>
+          )}
+
+          {/* Game Over banner */}
+          {gameOver && (
+            <div className="win-banner">
+              <div className="win-banner-content">
+                <h2>🏆 Game Over!</h2>
+                <p>All {hookTotalRounds || totalRounds} rounds complete.</p>
+                <div className="game-over-scores">
+                  {sortedPlayers.map((p, idx) => (
+                    <div key={p.id} className="game-over-row">
+                      <span>{idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}</span>
+                      <span className="game-over-name">{p.name}{p.id === playerId ? ' (You)' : ''}</span>
+                      <span className="game-over-pts">{scores[p.id] || 0} pts</span>
+                    </div>
+                  ))}
+                </div>
+                <button className="btn" onClick={handleLeaveRoom}>Back to Lobby</button>
               </div>
             </div>
           )}

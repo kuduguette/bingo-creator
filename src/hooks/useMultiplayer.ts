@@ -55,6 +55,7 @@ export const useMultiplayer = () => {
     const [calledEntries, setCalledEntries] = useState<string[]>([]);
     const [currentCall, setCurrentCall] = useState<string | null>(null);
     const [callerRemaining, setCallerRemaining] = useState(0);
+    const [gameOver, setGameOver] = useState(false);
     const [shuffledCardCallback, setShuffledCardCallback] = useState<((contents: CellContent[]) => void) | null>(null);
     const [roomSettingsCallback, setRoomSettingsCallback] = useState<((settings: RoomSettings) => void) | null>(null);
 
@@ -116,6 +117,11 @@ export const useMultiplayer = () => {
             setCallerRemaining(0);
         });
 
+        newSocket.on('game_over', ({ scores: s }: { scores: Record<string, number> }) => {
+            setScores(s);
+            setGameOver(true);
+        });
+
         return () => { newSocket.close(); };
     }, []);
 
@@ -159,6 +165,7 @@ export const useMultiplayer = () => {
             setCurrentRound(0);
             setCalledEntries([]);
             setCurrentCall(null);
+            setGameOver(false);
         });
     }, [socket]);
 
@@ -224,7 +231,7 @@ export const useMultiplayer = () => {
 
     return {
         socket, isConnected, roomCode, playerId, players,
-        gameStarted, isHost, messages,
+        gameStarted, gameOver, isHost, messages,
         scores, currentRound, totalRounds, latestScoreEvent,
         calledEntries, currentCall, callerRemaining,
         createRoom, joinRoom, updateRoomSettings, declareWin,

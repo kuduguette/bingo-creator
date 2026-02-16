@@ -130,7 +130,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Player declares bingo — increment score, broadcast to ALL, check round end
+    // Player declares bingo — increment score, broadcast to ALL, auto-advance round
     socket.on('declare_win', ({ roomId, playerName, winType }) => {
         const room = rooms.get(roomId);
         if (!room) return;
@@ -138,6 +138,8 @@ io.on('connection', (socket) => {
         // Increment score
         if (!room.scores[socket.id]) room.scores[socket.id] = 0;
         room.scores[socket.id]++;
+
+        const totalRounds = (room.settings && room.settings.totalRounds) || 1;
 
         // Broadcast to ALL players (including the winner)
         io.to(roomId).emit('player_scored', {
@@ -147,6 +149,29 @@ io.on('connection', (socket) => {
             scores: room.scores,
             currentRound: room.currentRound
         });
+
+        // Auto-advance after a short delay so players can see the bingo toast
+        setTimeout(() => {
+            const r = rooms.get(roomId);
+            if (!r) return;
+
+            if (r.currentRound >= totalRounds) {
+                // Game over
+                io.to(roomId).emit('game_over', { scores: r.scores });
+                console.log(`Game over in room ${roomId}`);
+            } else {
+                // Next round
+                r.currentRound++;
+                r.calledEntries = [];
+                dealCards(r);
+                io.to(roomId).emit('new_round', {
+                    currentRound: r.currentRound,
+                    totalRounds,
+                    scores: r.scores
+                });
+                console.log(`Room ${roomId} — auto-advanced to Round ${r.currentRound} of ${totalRounds}`);
+            }
+        }, 4000);
     });
 
     // Host starts a new round (or the first round)
