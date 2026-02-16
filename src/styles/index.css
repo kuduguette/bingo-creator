@@ -2760,7 +2760,7 @@ body {
   bottom: 4.5rem;
   right: 1.2rem;
   width: 320px;
-  max-height: 380px;
+  max-height: 420px;
   background: var(--card-bg, #fff);
   border: 1px solid var(--border, #e2e8f0);
   border-radius: 16px;
@@ -2816,8 +2816,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  min-height: 120px;
-  max-height: 220px;
+  min-height: 140px;
+  max-height: 260px;
 }
 
 .chat-empty {
@@ -3016,11 +3016,9 @@ body {
 
 @media (max-width: 768px) {
   .scoreboard {
-    position: static;
-    transform: none;
-    width: auto;
-    max-width: 100%;
-    margin: 0.25rem 0.5rem;
+    width: 140px;
+    padding: 0.4rem 0.5rem;
+    left: 0.5rem;
   }
 }
 
