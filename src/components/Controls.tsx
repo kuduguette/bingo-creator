@@ -45,6 +45,7 @@ interface ControlsProps {
     allCaps: boolean;
     setAllCaps: (caps: boolean) => void;
     onPrint: () => void;
+    hideWinMode?: boolean;
 }
 
 export const Controls: React.FC<ControlsProps> = ({
@@ -61,6 +62,7 @@ export const Controls: React.FC<ControlsProps> = ({
     allCaps,
     setAllCaps,
     onPrint,
+    hideWinMode = false,
 }) => {
     return (
         <div className="controls-panel glass-panel no-print">
@@ -79,20 +81,22 @@ export const Controls: React.FC<ControlsProps> = ({
                     ))}
                 </div>
 
-                <div className="controls-group">
-                    <span className="controls-label">Win:</span>
-                    <select
-                        value={gameMode}
-                        onChange={(e) => setGameMode(e.target.value)}
-                        className="mode-select"
-                    >
-                        <option value="any">Any Line</option>
-                        <option value="blackout">Blackout</option>
-                        <option value="row">Row Only</option>
-                        <option value="column">Column Only</option>
-                        <option value="diagonal">Diagonal Only</option>
-                    </select>
-                </div>
+                {!hideWinMode && (
+                    <div className="controls-group">
+                        <span className="controls-label">Win:</span>
+                        <select
+                            value={gameMode}
+                            onChange={(e) => setGameMode(e.target.value)}
+                            className="mode-select"
+                        >
+                            <option value="any">Any Line</option>
+                            <option value="blackout">Blackout</option>
+                            <option value="row">Row Only</option>
+                            <option value="column">Column Only</option>
+                            <option value="diagonal">Diagonal Only</option>
+                        </select>
+                    </div>
+                )}
             </div>
 
             {/* Row 2: Fonts */}

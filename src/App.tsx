@@ -310,7 +310,7 @@ function App() {
             size={size} setSize={setSize} gameMode={gameMode} setGameMode={setGameMode}
             titleFont={titleFont} setTitleFont={setTitleFont} bodyFont={bodyFont} setBodyFont={setBodyFont}
             onShuffle={() => generateBoard()} allCaps={allCaps} setAllCaps={setAllCaps}
-            onPrint={() => window.print()} onClear={clearAll}
+            onPrint={() => window.print()} onClear={clearAll} hideWinMode
           />
           <div className="printable-area" style={{ textTransform: allCaps ? 'uppercase' : 'none' }}>
             <TitleRow />
