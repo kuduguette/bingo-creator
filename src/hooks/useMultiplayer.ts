@@ -18,6 +18,7 @@ export interface RoomSettings {
     allCaps: boolean;
     entries: string;
     totalRounds: number;
+    callerEnabled: boolean;
 }
 
 export type CellContent = { id: number; text: string; image: string | null };
@@ -51,6 +52,9 @@ export const useMultiplayer = () => {
     const [currentRound, setCurrentRound] = useState(0);
     const [totalRounds, setTotalRounds] = useState(1);
     const [latestScoreEvent, setLatestScoreEvent] = useState<ScoreEvent | null>(null);
+    const [calledEntries, setCalledEntries] = useState<string[]>([]);
+    const [currentCall, setCurrentCall] = useState<string | null>(null);
+    const [callerRemaining, setCallerRemaining] = useState(0);
     const [shuffledCardCallback, setShuffledCardCallback] = useState<((contents: CellContent[]) => void) | null>(null);
     const [roomSettingsCallback, setRoomSettingsCallback] = useState<((settings: RoomSettings) => void) | null>(null);
 
@@ -100,6 +104,18 @@ export const useMultiplayer = () => {
             setMessages(prev => [...prev, msg]);
         });
 
+        newSocket.on('entry_called', ({ entry, calledEntries: called, remaining }: { entry: string; calledEntries: string[]; remaining: number }) => {
+            setCurrentCall(entry);
+            setCalledEntries(called);
+            setCallerRemaining(remaining);
+        });
+
+        newSocket.on('calls_reset', () => {
+            setCalledEntries([]);
+            setCurrentCall(null);
+            setCallerRemaining(0);
+        });
+
         return () => { newSocket.close(); };
     }, []);
 
@@ -141,6 +157,8 @@ export const useMultiplayer = () => {
             setGameStarted(false);
             setScores({});
             setCurrentRound(0);
+            setCalledEntries([]);
+            setCurrentCall(null);
         });
     }, [socket]);
 
@@ -159,6 +177,7 @@ export const useMultiplayer = () => {
                 roomSettingsCallback(response.settings);
                 setTotalRounds(response.settings.totalRounds || 1);
             }
+            setCalledEntries(response.calledEntries || []);
         });
     }, [socket, roomSettingsCallback]);
 
@@ -191,14 +210,26 @@ export const useMultiplayer = () => {
         setLatestScoreEvent(null);
     }, []);
 
+    const nextCall = useCallback(() => {
+        if (!socket || !roomCode) return;
+        socket.emit('next_call', roomCode);
+    }, [socket, roomCode]);
+
+    const resetCalls = useCallback(() => {
+        if (!socket || !roomCode) return;
+        socket.emit('reset_calls', roomCode);
+    }, [socket, roomCode]);
+
     const isHost = playerId !== null && playerId === hostId;
 
     return {
         socket, isConnected, roomCode, playerId, players,
         gameStarted, isHost, messages,
         scores, currentRound, totalRounds, latestScoreEvent,
+        calledEntries, currentCall, callerRemaining,
         createRoom, joinRoom, updateRoomSettings, declareWin,
         startGame, nextRound, sendMessage, clearScoreEvent,
+        nextCall, resetCalls,
         onShuffledCard, onRoomSettings
     };
 };

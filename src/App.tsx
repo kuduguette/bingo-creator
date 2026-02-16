@@ -22,6 +22,7 @@ function App() {
   const [allCaps, setAllCaps] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [totalRounds, setTotalRounds] = useState(1);
+  const [callerEnabled, setCallerEnabled] = useState(false);
 
   // Views: lobby (home), room (multiplayer), printable (solo card maker)
   const [view, setView] = useState<'lobby' | 'room' | 'printable'>('lobby');
@@ -39,6 +40,8 @@ function App() {
     declareWin, startGame, nextRound, sendMessage, messages,
     scores, currentRound, totalRounds: hookTotalRounds,
     latestScoreEvent, clearScoreEvent,
+    calledEntries, currentCall, callerRemaining,
+    nextCall, resetCalls,
     onShuffledCard, onRoomSettings
   } = useMultiplayer();
 
@@ -94,6 +97,7 @@ function App() {
       setAllCaps(settings.allCaps);
       setEntries(settings.entries);
       if (settings.totalRounds) setTotalRounds(settings.totalRounds);
+      if (settings.callerEnabled !== undefined) setCallerEnabled(settings.callerEnabled);
     });
   }, [onRoomSettings]);
 
@@ -107,11 +111,11 @@ function App() {
     document.documentElement.classList.toggle('dark-theme', darkMode);
   }, [darkMode]);
 
-  // Host syncs settings (including totalRounds)
+  // Host syncs settings (including totalRounds, callerEnabled)
   useEffect(() => {
     if (!roomCode || !isHost || !isConnected) return;
-    updateRoomSettings({ size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, entries, totalRounds });
-  }, [size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, entries, totalRounds, roomCode, isHost, isConnected, updateRoomSettings]);
+    updateRoomSettings({ size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, entries, totalRounds, callerEnabled });
+  }, [size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, entries, totalRounds, callerEnabled, roomCode, isHost, isConnected, updateRoomSettings]);
 
   // Show bingo toast when someone scores
   useEffect(() => {
@@ -308,6 +312,13 @@ function App() {
                 onPrint={() => window.print()} onClear={clearAll}
                 totalRounds={totalRounds} setTotalRounds={setTotalRounds}
               />
+              <div className="caller-toggle-row no-print">
+                <label className="caller-toggle-label">
+                  <input type="checkbox" checked={callerEnabled} onChange={(e) => setCallerEnabled(e.target.checked)} />
+                  <span>🎙️ Enable Bingo Caller</span>
+                  <span className="caller-toggle-hint">Randomly draws entries one at a time for calling out</span>
+                </label>
+              </div>
               <div className="printable-area">
                 {editableTitleJSX}
                 {entriesEditorJSX}
@@ -331,6 +342,46 @@ function App() {
             </div>
           ) : (
             <>
+              {/* Caller Panel */}
+              {callerEnabled && (
+                <div className="caller-panel no-print">
+                  <div className="caller-header">
+                    <span>🎙️ Bingo Caller</span>
+                    <span className="caller-count">{calledEntries.length} called · {callerRemaining} left</span>
+                  </div>
+                  {currentCall ? (
+                    <div className="caller-current">
+                      <div className="caller-current-label">Now calling:</div>
+                      <div className="caller-current-entry">{currentCall}</div>
+                    </div>
+                  ) : (
+                    <div className="caller-current">
+                      <div className="caller-current-label">Press &quot;Next&quot; to draw an entry</div>
+                    </div>
+                  )}
+                  {calledEntries.length > 0 && (
+                    <div className="caller-history">
+                      <div className="caller-history-label">Previously called:</div>
+                      <div className="caller-history-list">
+                        {[...calledEntries].reverse().slice(1).map((e, i) => (
+                          <span key={i} className="caller-history-item">{e}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {isHost && (
+                    <div className="caller-actions">
+                      <button className="btn btn-caller-next" onClick={nextCall} disabled={callerRemaining === 0 && calledEntries.length > 0}>
+                        🎲 Next
+                      </button>
+                      <button className="btn btn-caller-reset" onClick={resetCalls}>
+                        🔄 Reset
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="printable-area" style={{ textTransform: allCaps ? 'uppercase' : 'none' }}>
                 {readonlyTitleJSX}
                 <BingoBoard size={size} cells={cells} editMode={false} onCellToggle={handleCellToggle} onCellUpdate={handleCellUpdate} fontFamily={bodyFont} />

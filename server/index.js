@@ -31,10 +31,11 @@ const io = new Server(httpServer, {
 // Room structure:
 // {
 //   id, hostId, players: [{ id, name }],
-//   settings: { size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, entries, totalRounds },
+//   settings: { size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, entries, totalRounds, callerEnabled },
 //   scores: { [playerId]: number },
 //   currentRound: number,
-//   gameStarted: boolean
+//   gameStarted: boolean,
+//   calledEntries: string[]   — entries already called out
 // }
 const rooms = new Map();
 
@@ -77,7 +78,8 @@ io.on('connection', (socket) => {
             settings: null,
             scores: {},
             currentRound: 0,
-            gameStarted: false
+            gameStarted: false,
+            calledEntries: []
         });
         callback({ roomId, playerId: socket.id });
         socket.join(roomId);
@@ -102,7 +104,8 @@ io.on('connection', (socket) => {
             settings: room.settings,
             scores: room.scores,
             currentRound: room.currentRound,
-            gameStarted: room.gameStarted
+            gameStarted: room.gameStarted,
+            calledEntries: room.calledEntries || []
         });
         console.log(`${playerName} joined room ${roomId}`);
     });
@@ -158,6 +161,7 @@ io.on('connection', (socket) => {
 
         room.currentRound = 1;
         room.gameStarted = true;
+        room.calledEntries = [];
 
         dealCards(room);
         io.to(roomId).emit('game_started', {
@@ -177,6 +181,7 @@ io.on('connection', (socket) => {
         if (room.currentRound >= totalRounds) return;
 
         room.currentRound++;
+        room.calledEntries = [];
 
         dealCards(room);
         io.to(roomId).emit('new_round', {
@@ -185,6 +190,34 @@ io.on('connection', (socket) => {
             scores: room.scores
         });
         console.log(`Room ${roomId} — Round ${room.currentRound} of ${totalRounds}`);
+    });
+
+    // Host draws next entry to call out
+    socket.on('next_call', (roomId) => {
+        const room = rooms.get(roomId);
+        if (!room || !room.settings || room.hostId !== socket.id) return;
+
+        const entryList = room.settings.entries.split(',').map(e => e.trim()).filter(e => e.length > 0);
+        const remaining = entryList.filter(e => !(room.calledEntries || []).includes(e));
+        if (remaining.length === 0) return;
+
+        const pick = remaining[Math.floor(Math.random() * remaining.length)];
+        if (!room.calledEntries) room.calledEntries = [];
+        room.calledEntries.push(pick);
+
+        io.to(roomId).emit('entry_called', {
+            entry: pick,
+            calledEntries: room.calledEntries,
+            remaining: remaining.length - 1
+        });
+    });
+
+    // Host resets called entries
+    socket.on('reset_calls', (roomId) => {
+        const room = rooms.get(roomId);
+        if (!room || room.hostId !== socket.id) return;
+        room.calledEntries = [];
+        io.to(roomId).emit('calls_reset');
     });
 
     socket.on('disconnecting', () => {
