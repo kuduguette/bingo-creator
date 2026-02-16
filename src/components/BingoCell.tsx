@@ -16,6 +16,7 @@ interface BingoCellProps {
     onToggle: (id: number) => void;
     onUpdate: (id: number, text: string, image: string | null) => void;
     called?: boolean;
+    callerActive?: boolean;
 }
 
 export const BingoCell: React.FC<BingoCellProps> = ({
@@ -28,6 +29,7 @@ export const BingoCell: React.FC<BingoCellProps> = ({
     onToggle,
     onUpdate,
     called = false,
+    callerActive = false,
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -48,6 +50,8 @@ export const BingoCell: React.FC<BingoCellProps> = ({
 
     const handleClick = () => {
         if (!editMode) {
+            // When caller is active, only allow toggling called entries
+            if (callerActive && !called && !marked) return;
             onToggle(id);
         }
     };
@@ -57,6 +61,7 @@ export const BingoCell: React.FC<BingoCellProps> = ({
         marked && !editMode ? 'marked' : '',
         editMode ? 'edit-mode' : '',
         called && !marked && !editMode ? 'called' : '',
+        callerActive && !called && !marked && !editMode ? 'locked' : '',
     ].filter(Boolean).join(' ');
 
     return (
