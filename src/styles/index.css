@@ -2685,20 +2685,18 @@ body {
   margin-top: 0.3rem;
 }
 
-/* ===== CHAT ===== */
 /* ===== CHAT SIDEBAR ===== */
 .chat-sidebar {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: 220px;
-  height: 100vh;
   background: var(--card-bg, #fff);
-  border-left: 1px solid var(--border, #e2e8f0);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 14px;
   display: flex;
   flex-direction: column;
-  z-index: 900;
-  box-shadow: -2px 0 16px rgba(0, 0, 0, 0.05);
+  max-width: 500px;
+  margin: 0.5rem auto;
+  height: 220px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
 }
 
 .chat-header {
@@ -2816,18 +2814,10 @@ body {
   cursor: default;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 480px) {
   .chat-sidebar {
-    position: fixed;
-    top: auto;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    width: 100%;
-    height: 200px;
-    border-left: none;
-    border-top: 1px solid var(--border, #e2e8f0);
-    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+    margin: 0.5rem 0.5rem;
+    height: 180px;
   }
 }
 
