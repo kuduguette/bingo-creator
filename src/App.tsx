@@ -23,7 +23,6 @@ function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [totalRounds, setTotalRounds] = useState(1);
   const [callerEnabled, setCallerEnabled] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
 
   // Views: lobby (home), room (multiplayer), printable (solo card maker)
   const [view, setView] = useState<'lobby' | 'room' | 'printable'>('lobby');
@@ -304,6 +303,9 @@ function App() {
             />
           )}
 
+          {/* Scoreboard (visible during game) */}
+          {scoreboardJSX}
+
           {isHost && !gameStarted ? (
             <>
               <Controls
@@ -312,7 +314,6 @@ function App() {
                 onShuffle={() => generateBoard()} allCaps={allCaps} setAllCaps={setAllCaps}
                 onPrint={() => window.print()} onClear={clearAll}
                 totalRounds={totalRounds} setTotalRounds={setTotalRounds}
-                hideFonts
               />
               <div className="caller-toggle-row no-print">
                 <label className="caller-toggle-label">
@@ -344,40 +345,6 @@ function App() {
             </div>
           ) : (
             <>
-              {/* Settings toggle for host during game */}
-              {isHost && (
-                <div className="game-settings-toggle no-print">
-                  <button className="btn btn-settings-toggle" onClick={() => setShowSettings(!showSettings)}>
-                    ⚙️ {showSettings ? 'Hide Settings' : 'Settings'}
-                  </button>
-                </div>
-              )}
-              {isHost && showSettings && (
-                <div className="game-settings-collapsible no-print">
-                  <Controls
-                    size={size} setSize={setSize} gameMode={gameMode} setGameMode={setGameMode}
-                    titleFont={titleFont} setTitleFont={setTitleFont} bodyFont={bodyFont} setBodyFont={setBodyFont}
-                    onShuffle={() => generateBoard()} allCaps={allCaps} setAllCaps={setAllCaps}
-                    onPrint={() => window.print()} onClear={clearAll}
-                    totalRounds={totalRounds} setTotalRounds={setTotalRounds}
-                    hideFonts
-                  />
-                </div>
-              )}
-
-              {/* Round info bar */}
-              <div className="round-info-bar no-print">
-                <span className="round-info-round">🎮 Round {currentRound} of {hookTotalRounds || totalRounds}</span>
-                {isHost && !isLastRound && (
-                  <button onClick={handleNextRound} className="btn btn-next-round-sm">
-                    ▶ Next Round
-                  </button>
-                )}
-              </div>
-
-              {/* Scoreboard */}
-              {scoreboardJSX}
-
               {/* Caller Panel */}
               {callerEnabled && (
                 <div className="caller-panel no-print">
@@ -424,7 +391,15 @@ function App() {
               </div>
               <div className="game-controls no-print">
                 <button onClick={resetMarks} className="btn btn-danger">Reset Marks</button>
+                {isHost && !isLastRound && (
+                  <button onClick={handleNextRound} className="btn btn-next-round">
+                    ▶ Next Round ({currentRound + 1}/{hookTotalRounds || totalRounds})
+                  </button>
+                )}
               </div>
+              <p className="tip-text no-print">
+                🎮 Round {currentRound} of {hookTotalRounds || totalRounds} — Click a square to mark it!
+              </p>
             </>
           )}
 

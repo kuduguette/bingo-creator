@@ -46,7 +46,6 @@ interface ControlsProps {
     setAllCaps: (caps: boolean) => void;
     onPrint: () => void;
     hideWinMode?: boolean;
-    hideFonts?: boolean;
     totalRounds?: number;
     setTotalRounds?: (rounds: number) => void;
 }
@@ -66,7 +65,6 @@ export const Controls: React.FC<ControlsProps> = ({
     setAllCaps,
     onPrint,
     hideWinMode = false,
-    hideFonts = false,
     totalRounds,
     setTotalRounds,
 }) => {
@@ -120,42 +118,40 @@ export const Controls: React.FC<ControlsProps> = ({
                 )}
             </div>
 
-            {/* Row 2: Fonts (hidden in multiplayer) */}
-            {!hideFonts && (
-                <div className="controls-row">
-                    <div className="controls-group">
-                        <span className="controls-label">Title Font:</span>
-                        <select
-                            value={titleFont}
-                            onChange={(e) => setTitleFont(e.target.value)}
-                            className="mode-select font-select"
-                            style={{ fontFamily: `'${titleFont}', sans-serif` }}
-                        >
-                            {FONT_OPTIONS.map((f) => (
-                                <option key={f.value} value={f.value} style={{ fontFamily: `'${f.value}', sans-serif` }}>
-                                    {f.label}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div className="controls-group">
-                        <span className="controls-label">Body Font:</span>
-                        <select
-                            value={bodyFont}
-                            onChange={(e) => setBodyFont(e.target.value)}
-                            className="mode-select font-select"
-                            style={{ fontFamily: `'${bodyFont}', sans-serif` }}
-                        >
-                            {FONT_OPTIONS.map((f) => (
-                                <option key={f.value} value={f.value} style={{ fontFamily: `'${f.value}', sans-serif` }}>
-                                    {f.label}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+            {/* Row 2: Fonts */}
+            <div className="controls-row">
+                <div className="controls-group">
+                    <span className="controls-label">Title Font:</span>
+                    <select
+                        value={titleFont}
+                        onChange={(e) => setTitleFont(e.target.value)}
+                        className="mode-select font-select"
+                        style={{ fontFamily: `'${titleFont}', sans-serif` }}
+                    >
+                        {FONT_OPTIONS.map((f) => (
+                            <option key={f.value} value={f.value} style={{ fontFamily: `'${f.value}', sans-serif` }}>
+                                {f.label}
+                            </option>
+                        ))}
+                    </select>
                 </div>
-            )}
+
+                <div className="controls-group">
+                    <span className="controls-label">Body Font:</span>
+                    <select
+                        value={bodyFont}
+                        onChange={(e) => setBodyFont(e.target.value)}
+                        className="mode-select font-select"
+                        style={{ fontFamily: `'${bodyFont}', sans-serif` }}
+                    >
+                        {FONT_OPTIONS.map((f) => (
+                            <option key={f.value} value={f.value} style={{ fontFamily: `'${f.value}', sans-serif` }}>
+                                {f.label}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            </div>
 
             {/* Row 3: Actions */}
             <div className="controls-row">
@@ -166,11 +162,9 @@ export const Controls: React.FC<ControlsProps> = ({
                     <button onClick={onShuffle} className="btn">
                         🔀 Shuffle
                     </button>
-                    {!hideFonts && (
-                        <button onClick={() => setAllCaps(!allCaps)} className={`btn btn-caps-toggle ${allCaps ? 'active' : ''}`} title={allCaps ? 'Normal case' : 'ALL CAPS'}>
-                            aA
-                        </button>
-                    )}
+                    <button onClick={() => setAllCaps(!allCaps)} className={`btn btn-caps-toggle ${allCaps ? 'active' : ''}`} title={allCaps ? 'Normal case' : 'ALL CAPS'}>
+                        aA
+                    </button>
                     <button onClick={onClear} className="btn btn-danger">
                         Clear All
                     </button>
