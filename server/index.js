@@ -96,6 +96,17 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Chat
+    socket.on('send_message', ({ roomId, playerName, message }) => {
+        io.to(roomId).emit('chat_message', {
+            id: Date.now() + '-' + socket.id,
+            senderId: socket.id,
+            senderName: playerName,
+            message,
+            timestamp: Date.now()
+        });
+    });
+
     socket.on('declare_win', ({ roomId, playerName, winType }) => {
         socket.to(roomId).emit('player_won', { playerName, winType });
     });

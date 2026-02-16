@@ -21,6 +21,14 @@ export interface RoomSettings {
 
 export type CellContent = { id: number; text: string; image: string | null };
 
+export interface ChatMessage {
+    id: string;
+    senderId: string;
+    senderName: string;
+    message: string;
+    timestamp: number;
+}
+
 export const useMultiplayer = () => {
     const [socket, setSocket] = useState<Socket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
@@ -29,6 +37,7 @@ export const useMultiplayer = () => {
     const [players, setPlayers] = useState<Player[]>([]);
     const [gameStarted, setGameStarted] = useState(false);
     const [hostId, setHostId] = useState<string | null>(null);
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [shuffledCardCallback, setShuffledCardCallback] = useState<((contents: CellContent[]) => void) | null>(null);
     const [roomSettingsCallback, setRoomSettingsCallback] = useState<((settings: RoomSettings) => void) | null>(null);
 
@@ -64,6 +73,10 @@ export const useMultiplayer = () => {
 
         newSocket.on('game_started', () => {
             setGameStarted(true);
+        });
+
+        newSocket.on('chat_message', (msg: ChatMessage) => {
+            setMessages(prev => [...prev, msg]);
         });
 
         return () => {
@@ -154,6 +167,11 @@ export const useMultiplayer = () => {
         setGameStarted(true);
     }, [socket, roomCode]);
 
+    const sendMessage = useCallback((playerName: string, message: string) => {
+        if (!socket || !roomCode) return;
+        socket.emit('send_message', { roomId: roomCode, playerName, message });
+    }, [socket, roomCode]);
+
     const isHost = playerId !== null && playerId === hostId;
 
     return {
@@ -164,11 +182,13 @@ export const useMultiplayer = () => {
         players,
         gameStarted,
         isHost,
+        messages,
         createRoom,
         joinRoom,
         updateRoomSettings,
         declareWin,
         startGame,
+        sendMessage,
         onShuffledCard,
         onRoomSettings
     };

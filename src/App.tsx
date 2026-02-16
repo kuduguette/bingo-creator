@@ -3,6 +3,7 @@ import { BingoBoard, type CellData } from './components/BingoBoard';
 import { Controls } from './components/Controls';
 import { MultiplayerLobby } from './components/MultiplayerLobby';
 import { RoomPanel } from './components/RoomPanel';
+import { ChatPanel } from './components/ChatPanel';
 import { useMultiplayer, type CellContent, type RoomSettings } from './hooks/useMultiplayer';
 import { checkWin, type BingoGrid } from './utils/winLogic';
 import confetti from 'canvas-confetti';
@@ -24,12 +25,13 @@ function App() {
   // Views: lobby (home), room (multiplayer), printable (solo card maker)
   const [view, setView] = useState<'lobby' | 'room' | 'printable'>('lobby');
   const [urlRoomCode, setUrlRoomCode] = useState<string | null>(null);
+  const [playerName, setPlayerName] = useState('');
 
   // Multiplayer
   const {
-    isConnected, roomCode, players, gameStarted, isHost,
+    isConnected, roomCode, players, gameStarted, isHost, playerId,
     createRoom, joinRoom, updateRoomSettings, socket,
-    declareWin, startGame, onShuffledCard, onRoomSettings
+    declareWin, startGame, sendMessage, messages, onShuffledCard, onRoomSettings
   } = useMultiplayer();
 
   const parsedEntries = entries.split(',').map(e => e.trim()).filter(e => e.length > 0);
@@ -225,8 +227,8 @@ function App() {
       {/* ===== HOME / LOBBY ===== */}
       {view === 'lobby' && (
         <MultiplayerLobby
-          onCreateRoom={(name: string) => createRoom(name)}
-          onJoinRoom={joinRoom}
+          onCreateRoom={(name: string) => { setPlayerName(name); createRoom(name); }}
+          onJoinRoom={(roomId: string, name: string) => { setPlayerName(name); joinRoom(roomId, name); }}
           onPrintableCard={() => setView('printable')}
           isConnected={isConnected}
           urlRoomCode={urlRoomCode}
@@ -294,6 +296,12 @@ function App() {
               </div>
             </div>
           )}
+
+          <ChatPanel
+            messages={messages}
+            onSend={(msg) => sendMessage(playerName, msg)}
+            currentPlayerId={playerId}
+          />
         </>
       )}
 
