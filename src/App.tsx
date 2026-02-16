@@ -158,7 +158,14 @@ function App() {
 
 
   const handleCellToggle = (id: number) => {
-    setCells(prev => prev.map(c => c.id === id ? { ...c, marked: !c.marked } : c));
+    setCells(prev => {
+      const cell = prev.find(c => c.id === id);
+      if (cell && !cell.marked && callerEnabled && calledEntries.includes(cell.text) && socket && roomCode) {
+        // Notify server that this player marked the current called entry
+        socket.emit('cell_marked', { roomId: roomCode, entryText: cell.text });
+      }
+      return prev.map(c => c.id === id ? { ...c, marked: !c.marked } : c);
+    });
   };
 
   const handleCellUpdate = (id: number, text: string, image: string | null) => {

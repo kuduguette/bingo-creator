@@ -35,7 +35,10 @@ const io = new Server(httpServer, {
 //   scores: { [playerId]: number },
 //   currentRound: number,
 //   gameStarted: boolean,
-//   calledEntries: string[]   — entries already called out
+//   calledEntries: string[],   — entries already called out
+//   playerCards: { [playerId]: string[] },  — each player's card entries
+//   markedCurrent: Set<string>,  — player IDs who have marked the current call
+//   autoAdvanceTimer: timeout  — pending auto-advance timer
 // }
 const rooms = new Map();
 
@@ -56,14 +59,18 @@ function dealCards(room) {
     const needed = size * size;
     if (entryList.length < needed) return;
 
+    if (!room.playerCards) room.playerCards = {};
+
     for (const player of room.players) {
         const shuffled = shuffleArray(entryList);
         const picked = shuffled.slice(0, needed);
+        room.playerCards[player.id] = picked; // store server-side
         const cellContents = picked.map((text, idx) => ({
             id: idx, text, image: null
         }));
         io.to(player.id).emit('shuffled_card', cellContents);
     }
+    room.markedCurrent = new Set();
 }
 
 io.on('connection', (socket) => {
@@ -79,7 +86,10 @@ io.on('connection', (socket) => {
             scores: {},
             currentRound: 0,
             gameStarted: false,
-            calledEntries: []
+            calledEntries: [],
+            playerCards: {},
+            markedCurrent: new Set(),
+            autoAdvanceTimer: null
         });
         callback({ roomId, playerId: socket.id });
         socket.join(roomId);
@@ -229,12 +239,76 @@ io.on('connection', (socket) => {
         const pick = remaining[Math.floor(Math.random() * remaining.length)];
         if (!room.calledEntries) room.calledEntries = [];
         room.calledEntries.push(pick);
+        room.markedCurrent = new Set();
+        if (room.autoAdvanceTimer) { clearTimeout(room.autoAdvanceTimer); room.autoAdvanceTimer = null; }
 
         io.to(roomId).emit('entry_called', {
             entry: pick,
             calledEntries: room.calledEntries,
             remaining: remaining.length - 1
         });
+
+        // Check if any player actually has this entry — if nobody does, auto-advance immediately
+        const playersWithEntry = room.players.filter(p =>
+            room.playerCards[p.id] && room.playerCards[p.id].includes(pick)
+        );
+        if (playersWithEntry.length === 0) {
+            room.autoAdvanceTimer = setTimeout(() => {
+                room.autoAdvanceTimer = null;
+                socket.emit('next_call', roomId);
+            }, 1000);
+        }
+    });
+
+    // Player marks a called entry on their board
+    socket.on('cell_marked', ({ roomId, entryText }) => {
+        const room = rooms.get(roomId);
+        if (!room || !room.settings || !room.calledEntries.length) return;
+
+        const currentEntry = room.calledEntries[room.calledEntries.length - 1];
+        if (entryText !== currentEntry) return; // only track marks for the current call
+
+        room.markedCurrent.add(socket.id);
+
+        // Check if all players who have this entry have now marked it
+        const playersWithEntry = room.players.filter(p =>
+            room.playerCards[p.id] && room.playerCards[p.id].includes(currentEntry)
+        );
+        const allMarked = playersWithEntry.every(p => room.markedCurrent.has(p.id));
+
+        if (allMarked && !room.autoAdvanceTimer) {
+            // Auto-advance after 1 second
+            room.autoAdvanceTimer = setTimeout(() => {
+                room.autoAdvanceTimer = null;
+                // Trigger next call (re-use the next_call logic)
+                const entryList = room.settings.entries.split(',').map(e => e.trim()).filter(e => e.length > 0);
+                const rem = entryList.filter(e => !(room.calledEntries || []).includes(e));
+                if (rem.length === 0) return;
+
+                const nextPick = rem[Math.floor(Math.random() * rem.length)];
+                room.calledEntries.push(nextPick);
+                room.markedCurrent = new Set();
+
+                io.to(roomId).emit('entry_called', {
+                    entry: nextPick,
+                    calledEntries: room.calledEntries,
+                    remaining: rem.length - 1
+                });
+
+                // If no player has this new entry, auto-advance again
+                const nextPlayersWithEntry = room.players.filter(p =>
+                    room.playerCards[p.id] && room.playerCards[p.id].includes(nextPick)
+                );
+                if (nextPlayersWithEntry.length === 0) {
+                    room.autoAdvanceTimer = setTimeout(() => {
+                        room.autoAdvanceTimer = null;
+                        // Emit a synthetic next_call from host
+                        const hostSocket = io.sockets.sockets.get(room.hostId);
+                        if (hostSocket) hostSocket.emit('next_call', roomId);
+                    }, 1000);
+                }
+            }, 1000);
+        }
     });
 
     // Host resets called entries
