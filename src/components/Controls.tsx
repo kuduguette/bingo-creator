@@ -46,6 +46,8 @@ interface ControlsProps {
     setAllCaps: (caps: boolean) => void;
     onPrint: () => void;
     hideWinMode?: boolean;
+    totalRounds?: number;
+    setTotalRounds?: (rounds: number) => void;
 }
 
 export const Controls: React.FC<ControlsProps> = ({
@@ -63,6 +65,8 @@ export const Controls: React.FC<ControlsProps> = ({
     setAllCaps,
     onPrint,
     hideWinMode = false,
+    totalRounds,
+    setTotalRounds,
 }) => {
     return (
         <div className="controls-panel glass-panel no-print">
@@ -94,6 +98,21 @@ export const Controls: React.FC<ControlsProps> = ({
                             <option value="row">Row Only</option>
                             <option value="column">Column Only</option>
                             <option value="diagonal">Diagonal Only</option>
+                        </select>
+                    </div>
+                )}
+
+                {!hideWinMode && setTotalRounds && (
+                    <div className="controls-group">
+                        <span className="controls-label">Rounds:</span>
+                        <select
+                            value={totalRounds || 1}
+                            onChange={(e) => setTotalRounds(Number(e.target.value))}
+                            className="mode-select"
+                        >
+                            {[1, 2, 3, 5, 10].map(n => (
+                                <option key={n} value={n}>{n}</option>
+                            ))}
                         </select>
                     </div>
                 )}

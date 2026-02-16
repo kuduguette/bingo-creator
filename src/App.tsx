@@ -21,17 +21,25 @@ function App() {
   const [bodyFont, setBodyFont] = useState('Inter');
   const [allCaps, setAllCaps] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [totalRounds, setTotalRounds] = useState(1);
 
   // Views: lobby (home), room (multiplayer), printable (solo card maker)
   const [view, setView] = useState<'lobby' | 'room' | 'printable'>('lobby');
   const [urlRoomCode, setUrlRoomCode] = useState<string | null>(null);
   const [playerName, setPlayerName] = useState('');
 
+  // Bingo toast (broadcast notification)
+  const [bingoToast, setBingoToast] = useState<{ name: string; type: string } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
   // Multiplayer
   const {
     isConnected, roomCode, players, gameStarted, isHost, playerId,
     createRoom, joinRoom, updateRoomSettings, socket,
-    declareWin, startGame, sendMessage, messages, onShuffledCard, onRoomSettings
+    declareWin, startGame, nextRound, sendMessage, messages,
+    scores, currentRound, totalRounds: hookTotalRounds,
+    latestScoreEvent, clearScoreEvent,
+    onShuffledCard, onRoomSettings
   } = useMultiplayer();
 
   const parsedEntries = entries.split(',').map(e => e.trim()).filter(e => e.length > 0);
@@ -63,7 +71,7 @@ function App() {
     }
   }, []);
 
-  // Shuffled card from server
+  // Shuffled card from server (new round or first start)
   useEffect(() => {
     onShuffledCard((contents: CellContent[]) => {
       setCells(contents.map((c, i) => ({
@@ -85,6 +93,7 @@ function App() {
       setBodyFont(settings.bodyFont);
       setAllCaps(settings.allCaps);
       setEntries(settings.entries);
+      if (settings.totalRounds) setTotalRounds(settings.totalRounds);
     });
   }, [onRoomSettings]);
 
@@ -98,11 +107,31 @@ function App() {
     document.documentElement.classList.toggle('dark-theme', darkMode);
   }, [darkMode]);
 
-  // Host syncs settings
+  // Host syncs settings (including totalRounds)
   useEffect(() => {
     if (!roomCode || !isHost || !isConnected) return;
-    updateRoomSettings({ size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, entries });
-  }, [size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, entries, roomCode, isHost, isConnected, updateRoomSettings]);
+    updateRoomSettings({ size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, entries, totalRounds });
+  }, [size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, entries, totalRounds, roomCode, isHost, isConnected, updateRoomSettings]);
+
+  // Show bingo toast when someone scores
+  useEffect(() => {
+    if (!latestScoreEvent) return;
+    const { playerName: scorerName, winType } = latestScoreEvent;
+    setBingoToast({ name: scorerName, type: winType });
+
+    // Auto-dismiss after 4 seconds
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      setBingoToast(null);
+      clearScoreEvent();
+    }, 4000);
+
+    // Confetti for everyone!
+    const fire = () => confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#22d3ee', '#818cf8', '#34d399', '#f59e0b'] });
+    fire(); setTimeout(fire, 250);
+
+    return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
+  }, [latestScoreEvent, clearScoreEvent]);
 
   // Check win condition
   useEffect(() => {
@@ -114,19 +143,14 @@ function App() {
     const mode = gameMode as 'row' | 'column' | 'diagonal' | 'blackout' | 'any';
     if (checkWin(grid, mode)) {
       setHasWon(true);
-      triggerWin();
-      const myName = players.find(p => p.id === socket?.id)?.name || 'Unknown';
+      const myName = players.find(p => p.id === socket?.id)?.name || playerName || 'Unknown';
       if (roomCode) declareWin(mode, myName);
     }
-  }, [cells, gameMode, size, hasWon, roomCode, declareWin, players, socket]);
+  }, [cells, gameMode, size, hasWon, roomCode, declareWin, players, socket, playerName]);
 
-  const triggerWin = useCallback(() => {
-    const fire = () => confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ['#22d3ee', '#818cf8', '#34d399', '#60a5fa'] });
-    fire(); setTimeout(fire, 300); setTimeout(fire, 600);
-  }, []);
+
 
   const handleCellToggle = (id: number) => {
-    if (hasWon) return;
     setCells(prev => prev.map(c => c.id === id ? { ...c, marked: !c.marked } : c));
   };
 
@@ -149,6 +173,13 @@ function App() {
   const dismissWin = () => { setHasWon(false); winDismissedRef.current = true; };
   const handleLeaveRoom = () => { window.location.href = window.location.pathname; };
   const handleStartGame = () => { startGame(); };
+  const handleNextRound = () => { nextRound(); };
+
+  const isLastRound = currentRound >= (hookTotalRounds || totalRounds);
+
+
+  // Sort players by score for the scoreboard
+  const sortedPlayers = [...players].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0));
 
   // Presets data
   const presets: [string, string, string, string][] = [
@@ -159,7 +190,7 @@ function App() {
     ['😊 Emotions', 'Feelings Bingo', 'Express Yourself', 'Happy, Sad, Excited, Nervous, Surprised, Angry, Grateful, Hopeful, Proud, Embarrassed, Confused, Jealous, Calm, Anxious, Amused, Bored, Content, Curious, Determined, Fearful, Inspired, Lonely, Nostalgic, Overwhelmed, Peaceful, Relieved, Shy, Silly, Thoughtful, Brave']
   ];
 
-  // Reusable JSX fragments (NOT components, to avoid remount issues)
+  // Reusable JSX fragments
   const entriesEditorJSX = (
     <div className="entries-editor">
       <textarea
@@ -201,6 +232,25 @@ function App() {
     <div className="card-title-row">
       <div className="card-title-input" style={{ fontFamily: `'${titleFont}', sans-serif`, textTransform: allCaps ? 'uppercase' : 'none' }}>{cardTitle}</div>
       {subtitle && <div className="card-subtitle-input" style={{ fontFamily: `'${titleFont}', sans-serif`, textTransform: allCaps ? 'uppercase' : 'none' }}>{subtitle}</div>}
+    </div>
+  );
+
+  // Scoreboard JSX (shown during game)
+  const scoreboardJSX = gameStarted && players.length > 0 && (
+    <div className="scoreboard no-print">
+      <div className="scoreboard-header">
+        <span>🏆 Scoreboard</span>
+        <span className="scoreboard-round">Round {currentRound} / {hookTotalRounds || totalRounds}</span>
+      </div>
+      <div className="scoreboard-list">
+        {sortedPlayers.map((p, idx) => (
+          <div key={p.id} className={`scoreboard-row ${p.id === playerId ? 'scoreboard-me' : ''}`}>
+            <span className="scoreboard-rank">{idx === 0 && (scores[p.id] || 0) > 0 ? '👑' : `#${idx + 1}`}</span>
+            <span className="scoreboard-name">{p.name}{p.id === playerId ? ' (You)' : ''}</span>
+            <span className="scoreboard-score">{scores[p.id] || 0}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 
@@ -246,6 +296,9 @@ function App() {
             />
           )}
 
+          {/* Scoreboard (visible during game) */}
+          {scoreboardJSX}
+
           {isHost && !gameStarted ? (
             <>
               <Controls
@@ -253,6 +306,7 @@ function App() {
                 titleFont={titleFont} setTitleFont={setTitleFont} bodyFont={bodyFont} setBodyFont={setBodyFont}
                 onShuffle={() => generateBoard()} allCaps={allCaps} setAllCaps={setAllCaps}
                 onPrint={() => window.print()} onClear={clearAll}
+                totalRounds={totalRounds} setTotalRounds={setTotalRounds}
               />
               <div className="printable-area">
                 {editableTitleJSX}
@@ -271,6 +325,7 @@ function App() {
                 <div className="joiner-info">
                   <div className="joiner-info-item"><strong>Card:</strong> {cardTitle || 'Not set yet'}</div>
                   <div className="joiner-info-item"><strong>Entries:</strong> {parsedEntries.length} / {size * size} needed</div>
+                  <div className="joiner-info-item"><strong>Rounds:</strong> {totalRounds}</div>
                 </div>
               </div>
             </div>
@@ -282,11 +337,29 @@ function App() {
               </div>
               <div className="game-controls no-print">
                 <button onClick={resetMarks} className="btn btn-danger">Reset Marks</button>
+                {isHost && !isLastRound && (
+                  <button onClick={handleNextRound} className="btn btn-next-round">
+                    ▶ Next Round ({currentRound + 1}/{hookTotalRounds || totalRounds})
+                  </button>
+                )}
               </div>
-              <p className="tip-text no-print">🎮 Click a square to mark it. Get BINGO to win!</p>
+              <p className="tip-text no-print">
+                🎮 Round {currentRound} of {hookTotalRounds || totalRounds} — Click a square to mark it!
+              </p>
             </>
           )}
 
+          {/* Bingo toast (broadcast) */}
+          {bingoToast && (
+            <div className="bingo-toast" onClick={() => setBingoToast(null)}>
+              <div className="bingo-toast-content">
+                <span className="bingo-toast-emoji">🎉</span>
+                <span><strong>{bingoToast.name}</strong> got BINGO! ({bingoToast.type})</span>
+              </div>
+            </div>
+          )}
+
+          {/* Win banner for yourself */}
           {hasWon && (
             <div className="win-banner" onClick={dismissWin}>
               <div className="win-banner-content" onClick={(e) => e.stopPropagation()}>
@@ -351,4 +424,3 @@ function App() {
 }
 
 export default App;
-

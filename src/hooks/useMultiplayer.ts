@@ -17,6 +17,7 @@ export interface RoomSettings {
     bodyFont: string;
     allCaps: boolean;
     entries: string;
+    totalRounds: number;
 }
 
 export type CellContent = { id: number; text: string; image: string | null };
@@ -29,6 +30,14 @@ export interface ChatMessage {
     timestamp: number;
 }
 
+export interface ScoreEvent {
+    playerId: string;
+    playerName: string;
+    winType: string;
+    scores: Record<string, number>;
+    currentRound: number;
+}
+
 export const useMultiplayer = () => {
     const [socket, setSocket] = useState<Socket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
@@ -38,15 +47,16 @@ export const useMultiplayer = () => {
     const [gameStarted, setGameStarted] = useState(false);
     const [hostId, setHostId] = useState<string | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [scores, setScores] = useState<Record<string, number>>({});
+    const [currentRound, setCurrentRound] = useState(0);
+    const [totalRounds, setTotalRounds] = useState(1);
+    const [latestScoreEvent, setLatestScoreEvent] = useState<ScoreEvent | null>(null);
     const [shuffledCardCallback, setShuffledCardCallback] = useState<((contents: CellContent[]) => void) | null>(null);
     const [roomSettingsCallback, setRoomSettingsCallback] = useState<((settings: RoomSettings) => void) | null>(null);
 
     // Initialize socket
     useEffect(() => {
-        const newSocket = io(SERVER_URL, {
-            autoConnect: true,
-        });
-
+        const newSocket = io(SERVER_URL, { autoConnect: true });
         setSocket(newSocket);
 
         newSocket.on('connect', () => {
@@ -63,51 +73,52 @@ export const useMultiplayer = () => {
             setPlayers(prev => [...prev.filter(p => p.id !== player.id), player]);
         });
 
-        newSocket.on('player_left', ({ id }: { id: string }) => {
+        newSocket.on('player_left', ({ id, scores: newScores }: { id: string; scores: Record<string, number> }) => {
             setPlayers(prev => prev.filter(p => p.id !== id));
+            if (newScores) setScores(newScores);
         });
 
-        newSocket.on('player_won', ({ playerName, winType }: { playerName: string, winType: string }) => {
-            alert(`${playerName} won with a ${winType}!`);
-        });
-
-        newSocket.on('game_started', () => {
+        newSocket.on('game_started', ({ currentRound: round, totalRounds: total, scores: s }: { currentRound: number; totalRounds: number; scores: Record<string, number> }) => {
             setGameStarted(true);
+            setCurrentRound(round);
+            setTotalRounds(total);
+            setScores(s);
+        });
+
+        newSocket.on('player_scored', (event: ScoreEvent) => {
+            setScores(event.scores);
+            setLatestScoreEvent(event);
+        });
+
+        newSocket.on('new_round', ({ currentRound: round, totalRounds: total, scores: s }: { currentRound: number; totalRounds: number; scores: Record<string, number> }) => {
+            setCurrentRound(round);
+            setTotalRounds(total);
+            setScores(s);
         });
 
         newSocket.on('chat_message', (msg: ChatMessage) => {
             setMessages(prev => [...prev, msg]);
         });
 
-        return () => {
-            newSocket.close();
-        };
+        return () => { newSocket.close(); };
     }, []);
 
-    // Listen for shuffled card event
+    // Listen: shuffled card
     useEffect(() => {
         if (!socket) return;
-
         const handler = (contents: CellContent[]) => {
-            if (shuffledCardCallback) {
-                shuffledCardCallback(contents);
-            }
+            if (shuffledCardCallback) shuffledCardCallback(contents);
         };
-
         socket.on('shuffled_card', handler);
         return () => { socket.off('shuffled_card', handler); };
     }, [socket, shuffledCardCallback]);
 
-    // Listen for room settings updates (from host)
+    // Listen: room settings updates
     useEffect(() => {
         if (!socket) return;
-
         const handler = (settings: RoomSettings) => {
-            if (roomSettingsCallback) {
-                roomSettingsCallback(settings);
-            }
+            if (roomSettingsCallback) roomSettingsCallback(settings);
         };
-
         socket.on('room_settings_update', handler);
         return () => { socket.off('room_settings_update', handler); };
     }, [socket, roomSettingsCallback]);
@@ -128,25 +139,25 @@ export const useMultiplayer = () => {
             setHostId(response.playerId);
             setPlayers([{ id: response.playerId, name: playerName }]);
             setGameStarted(false);
+            setScores({});
+            setCurrentRound(0);
         });
     }, [socket]);
 
     const joinRoom = useCallback((roomId: string, playerName: string) => {
         if (!socket) return;
         socket.emit('join_room', { roomId, playerName }, (response: any) => {
-            if (response.error) {
-                alert(response.error);
-                return;
-            }
+            if (response.error) { alert(response.error); return; }
             setRoomCode(response.roomId);
             setPlayerId(response.playerId);
             setHostId(response.hostId);
             setPlayers(response.players);
-            setGameStarted(false);
-
-            // If the room already has settings, apply them
+            setGameStarted(response.gameStarted || false);
+            setScores(response.scores || {});
+            setCurrentRound(response.currentRound || 0);
             if (response.settings && roomSettingsCallback) {
                 roomSettingsCallback(response.settings);
+                setTotalRounds(response.settings.totalRounds || 1);
             }
         });
     }, [socket, roomSettingsCallback]);
@@ -164,7 +175,11 @@ export const useMultiplayer = () => {
     const startGame = useCallback(() => {
         if (!socket || !roomCode) return;
         socket.emit('start_game', roomCode);
-        setGameStarted(true);
+    }, [socket, roomCode]);
+
+    const nextRound = useCallback(() => {
+        if (!socket || !roomCode) return;
+        socket.emit('next_round', roomCode);
     }, [socket, roomCode]);
 
     const sendMessage = useCallback((playerName: string, message: string) => {
@@ -172,24 +187,18 @@ export const useMultiplayer = () => {
         socket.emit('send_message', { roomId: roomCode, playerName, message });
     }, [socket, roomCode]);
 
+    const clearScoreEvent = useCallback(() => {
+        setLatestScoreEvent(null);
+    }, []);
+
     const isHost = playerId !== null && playerId === hostId;
 
     return {
-        socket,
-        isConnected,
-        roomCode,
-        playerId,
-        players,
-        gameStarted,
-        isHost,
-        messages,
-        createRoom,
-        joinRoom,
-        updateRoomSettings,
-        declareWin,
-        startGame,
-        sendMessage,
-        onShuffledCard,
-        onRoomSettings
+        socket, isConnected, roomCode, playerId, players,
+        gameStarted, isHost, messages,
+        scores, currentRound, totalRounds, latestScoreEvent,
+        createRoom, joinRoom, updateRoomSettings, declareWin,
+        startGame, nextRound, sendMessage, clearScoreEvent,
+        onShuffledCard, onRoomSettings
     };
 };

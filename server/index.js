@@ -28,13 +28,13 @@ const io = new Server(httpServer, {
     }
 });
 
-// Store rooms in memory
 // Room structure:
 // {
-//   id: string,
-//   hostId: string,
-//   players: [{ id, name }],
-//   settings: { size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, entries }
+//   id, hostId, players: [{ id, name }],
+//   settings: { size, gameMode, cardTitle, subtitle, titleFont, bodyFont, allCaps, entries, totalRounds },
+//   scores: { [playerId]: number },
+//   currentRound: number,
+//   gameStarted: boolean
 // }
 const rooms = new Map();
 
@@ -48,6 +48,23 @@ function shuffleArray(arr) {
     return shuffled;
 }
 
+// Helper: deal new shuffled cards to all players in a room
+function dealCards(room) {
+    const { entries, size } = room.settings;
+    const entryList = entries.split(',').map(e => e.trim()).filter(e => e.length > 0);
+    const needed = size * size;
+    if (entryList.length < needed) return;
+
+    for (const player of room.players) {
+        const shuffled = shuffleArray(entryList);
+        const picked = shuffled.slice(0, needed);
+        const cellContents = picked.map((text, idx) => ({
+            id: idx, text, image: null
+        }));
+        io.to(player.id).emit('shuffled_card', cellContents);
+    }
+}
+
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
@@ -57,37 +74,40 @@ io.on('connection', (socket) => {
             id: roomId,
             hostId: socket.id,
             players: [{ id: socket.id, name: hostName }],
-            settings: null
+            settings: null,
+            scores: {},
+            currentRound: 0,
+            gameStarted: false
         });
-        socket.join(roomId);
         callback({ roomId, playerId: socket.id });
+        socket.join(roomId);
         console.log(`Room ${roomId} created by ${hostName}`);
     });
 
     socket.on('join_room', ({ roomId, playerName }, callback) => {
         const room = rooms.get(roomId);
-        if (!room) {
-            return callback({ error: 'Room not found' });
-        }
+        if (!room) return callback({ error: 'Room not found' });
 
         room.players.push({ id: socket.id, name: playerName });
+        room.scores[socket.id] = 0;
         socket.join(roomId);
 
-        // Notify others in room
         socket.to(roomId).emit('player_joined', { id: socket.id, name: playerName });
 
-        // Return room info + current settings so joiner can see what's configured
         callback({
             roomId,
             playerId: socket.id,
             hostId: room.hostId,
             players: room.players,
-            settings: room.settings
+            settings: room.settings,
+            scores: room.scores,
+            currentRound: room.currentRound,
+            gameStarted: room.gameStarted
         });
         console.log(`${playerName} joined room ${roomId}`);
     });
 
-    // Host updates room settings (entries, title, size, etc.)
+    // Host updates room settings
     socket.on('update_room_settings', (roomId, settings) => {
         const room = rooms.get(roomId);
         if (room && room.hostId === socket.id) {
@@ -107,33 +127,64 @@ io.on('connection', (socket) => {
         });
     });
 
+    // Player declares bingo — increment score, broadcast to ALL, check round end
     socket.on('declare_win', ({ roomId, playerName, winType }) => {
-        socket.to(roomId).emit('player_won', { playerName, winType });
+        const room = rooms.get(roomId);
+        if (!room) return;
+
+        // Increment score
+        if (!room.scores[socket.id]) room.scores[socket.id] = 0;
+        room.scores[socket.id]++;
+
+        // Broadcast to ALL players (including the winner)
+        io.to(roomId).emit('player_scored', {
+            playerId: socket.id,
+            playerName,
+            winType,
+            scores: room.scores,
+            currentRound: room.currentRound
+        });
     });
 
+    // Host starts a new round (or the first round)
     socket.on('start_game', (roomId) => {
         const room = rooms.get(roomId);
         if (!room || !room.settings) return;
 
-        const { entries, size } = room.settings;
-        const entryList = entries.split(',').map(e => e.trim()).filter(e => e.length > 0);
-        const needed = size * size;
-
-        if (entryList.length < needed) return;
-
-        // Send each player a uniquely shuffled board
-        for (const player of room.players) {
-            const shuffled = shuffleArray(entryList);
-            const picked = shuffled.slice(0, needed);
-            const cellContents = picked.map((text, idx) => ({
-                id: idx,
-                text,
-                image: null
-            }));
-            io.to(player.id).emit('shuffled_card', cellContents);
+        // Initialize scores for all players if first start
+        for (const p of room.players) {
+            if (room.scores[p.id] === undefined) room.scores[p.id] = 0;
         }
-        io.to(roomId).emit('game_started');
-        console.log(`Game started in room ${roomId} — shuffled cards sent to ${room.players.length} players`);
+
+        room.currentRound = 1;
+        room.gameStarted = true;
+
+        dealCards(room);
+        io.to(roomId).emit('game_started', {
+            currentRound: room.currentRound,
+            totalRounds: room.settings.totalRounds || 1,
+            scores: room.scores
+        });
+        console.log(`Game started in room ${roomId} — Round 1 of ${room.settings.totalRounds || 1}`);
+    });
+
+    // Host starts next round
+    socket.on('next_round', (roomId) => {
+        const room = rooms.get(roomId);
+        if (!room || !room.settings || room.hostId !== socket.id) return;
+
+        const totalRounds = room.settings.totalRounds || 1;
+        if (room.currentRound >= totalRounds) return;
+
+        room.currentRound++;
+
+        dealCards(room);
+        io.to(roomId).emit('new_round', {
+            currentRound: room.currentRound,
+            totalRounds,
+            scores: room.scores
+        });
+        console.log(`Room ${roomId} — Round ${room.currentRound} of ${totalRounds}`);
     });
 
     socket.on('disconnecting', () => {
@@ -141,10 +192,11 @@ io.on('connection', (socket) => {
             if (rooms.has(room)) {
                 const r = rooms.get(room);
                 r.players = r.players.filter(p => p.id !== socket.id);
+                delete r.scores[socket.id];
                 if (r.players.length === 0) {
                     rooms.delete(room);
                 } else {
-                    io.to(room).emit('player_left', { id: socket.id });
+                    io.to(room).emit('player_left', { id: socket.id, scores: r.scores });
                 }
             }
         }
